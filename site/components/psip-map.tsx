@@ -4,6 +4,7 @@ import {useEffect,useRef} from 'react';
 import type {SchoolProject} from '@/lib/psip-data';
 
 const statusColors={Ready:'#19a974',Pending:'#e1a11a','At risk':'#d94b5b'};
+const regionColors=['#1854bd','#19a974','#e1a11a','#d94b5b','#7c3aed','#db2777','#0891b2','#65a30d'];
 
 function popupContent(project:SchoolProject){
  const root=document.createElement('div');
@@ -19,7 +20,7 @@ function popupContent(project:SchoolProject){
  return root;
 }
 
-export default function PsipMap({projects,onSelect}:{projects:SchoolProject[];onSelect:(project:SchoolProject)=>void}){
+export default function PsipMap({projects,onSelect,view='Regional Map View'}:{projects:SchoolProject[];onSelect:(project:SchoolProject)=>void;view?:string}){
  const host=useRef<HTMLDivElement>(null);
  const selectRef=useRef(onSelect);
  selectRef.current=onSelect;
@@ -39,7 +40,8 @@ export default function PsipMap({projects,onSelect}:{projects:SchoolProject[];on
     const markerButton=document.createElement('button');
     markerButton.type='button';
     markerButton.className='psip-map-marker';
-    markerButton.style.background=statusColors[project.readiness];
+    const regionIndex=Math.max(0,Array.from(new Set(projects.map(p=>p.region))).indexOf(project.region));
+    markerButton.style.background=view==='Sites Operational Readiness Locator'?statusColors[project.readiness]:view==='Buildings Geographical Location'?regionColors[regionIndex%regionColors.length]:'#1854bd';
     markerButton.setAttribute('aria-label',`Preview ${project.name}, ${project.classrooms} classrooms, ${project.readiness}`);
     const popup=new mapboxgl.Popup({offset:18,className:'psip-map-popup',closeButton:true,maxWidth:'260px'}).setDOMContent(popupContent(project));
     markerButton.addEventListener('click',()=>selectRef.current(project));
