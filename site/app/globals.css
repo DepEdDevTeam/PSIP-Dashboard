@@ -31,11 +31,9 @@ button,input,select { font:inherit; }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition-duration:.01ms!important; } }
 .mapboxgl-map { font-family:var(--font-geist-sans),Arial,sans-serif; background:#e9eff7; }
 .mapboxgl-ctrl-attrib { font-size:9px!important; }
-.psip-map-marker { display:grid; place-items:center; width:28px; height:28px; border:4px solid #fff; border-radius:999px; box-shadow:0 4px 14px rgba(11,36,95,.28); cursor:pointer; transition:transform .15s ease,box-shadow .15s ease; }
+.psip-map-marker { display:grid; place-items:center; width:28px; height:28px; padding:0; background:var(--marker-color,#1854bd); border:4px solid #fff; border-radius:999px; box-shadow:0 4px 14px rgba(11,36,95,.28); cursor:pointer; transition:transform .15s ease,box-shadow .15s ease; }
 .psip-map-marker:hover,.psip-map-marker:focus-visible { transform:scale(1.14); box-shadow:0 6px 18px rgba(11,36,95,.35); }
 .psip-map-marker::after { content:''; width:6px; height:6px; border-radius:999px; background:#fff; }
-.psip-map-popup .mapboxgl-popup-content { border-radius:14px; padding:12px 14px; box-shadow:0 10px 28px rgba(11,36,95,.18); color:#0b1739; }
-.psip-map-popup .mapboxgl-popup-close-button { width:28px; height:28px; font-size:18px; }
 
 .dark {
   --background: oklch(0.145 0 0);

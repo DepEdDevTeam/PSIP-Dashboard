@@ -1,7 +1,7 @@
-export type ReadinessStatus = 'Ready' | 'At risk' | 'Pending';
-export type BuildingType = 'Low-rise' | 'Mid-rise' | 'High-rise';
-export type FacilityCounts={audioVisual:number;computerLab:number;homeEconomics:number;scienceLab:number;workshop:number};
-export type SchoolProject = { id:string; name:string; region:string; division:string; municipality:string; buildingType:BuildingType; classrooms:number; readiness:ReadinessStatus; demolition:boolean; siteImprovement:boolean; slopeProtection:boolean; lat:number; lng:number; facilities?:FacilityCounts; floors:number; completion:number };
+export type ReadinessStatus = 'Ready' | 'At risk' | 'Pending' | 'Unknown';
+export type BuildingType = string;
+export type FacilityCounts={academic?:number;audioVisual:number;computerLab:number;homeEconomics:number;scienceLab:number;workshop:number};
+export type SchoolProject = { id:string; recordId?:string; projectId?:string|null; name:string; region:string; division:string; municipality:string; buildingType:BuildingType; classrooms:number; readiness:ReadinessStatus; demolition:boolean; siteImprovement:boolean; slopeProtection:boolean; lat:number|null; lng:number|null; facilities?:FacilityCounts; floors:number; completion:number };
 export const projects:SchoolProject[] = [
   {id:'502649',name:'Malayugan ES/IS',region:'CAR',division:'Apayao',municipality:'Flora',buildingType:'Low-rise',classrooms:8,readiness:'Ready',demolition:false,siteImprovement:true,slopeProtection:true,lat:18.21,lng:121.42,floors:2,completion:100,facilities:{audioVisual:1,computerLab:1,homeEconomics:1,scienceLab:1,workshop:1}},
   {id:'134966',name:'Agtangao Elementary School',region:'CAR',division:'Abra',municipality:'Bangued',buildingType:'Low-rise',classrooms:8,readiness:'Pending',demolition:false,siteImprovement:true,slopeProtection:false,lat:17.60,lng:120.61,floors:2,completion:78},
