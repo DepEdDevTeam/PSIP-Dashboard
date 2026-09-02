@@ -51,7 +51,8 @@ export default function PsipMap({projects,onSelect,view='Regional Map View'}:{pr
     markers.push(marker);
     bounds.extend([project.lng,project.lat]);
    });
-   map.once('load',()=>{if(!bounds.isEmpty())map.fitBounds(bounds,{padding:48,maxZoom:7,duration:0})});
+   map.once('load',()=>{if(!bounds.isEmpty())map.fitBounds(bounds,{padding:48,maxZoom:7,duration:0});requestAnimationFrame(()=>map.resize())});
+   map.on('error',event=>console.error('Mapbox failed to render',event.error));
    cleanup=()=>{markers.forEach(marker=>marker.remove());map.remove()};
   });
   return()=>{disposed=true;cleanup()};
