@@ -112,7 +112,10 @@ const regionAliases: Record<string, string> = {
 };
 
 function canonicalRegion(value: string) {
-  const key = value.toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+  const key = value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
   return regionAliases[key] || value;
 }
 
@@ -258,11 +261,16 @@ export default function PsipMap({
             if (disposed) return;
             try {
               if (view === REGIONAL_VIEW) {
-                const response = await fetch('/data/philippines-regions.geojson', {
-                  signal: controller.signal,
-                });
-                if (!response.ok) throw new Error('Regional boundaries unavailable');
-                const geojson = (await response.json()) as RegionFeatureCollection;
+                const response = await fetch(
+                  '/data/philippines-regions.geojson',
+                  {
+                    signal: controller.signal,
+                  },
+                );
+                if (!response.ok)
+                  throw new Error('Regional boundaries unavailable');
+                const geojson =
+                  (await response.json()) as RegionFeatureCollection;
                 if (disposed) return;
                 const summaries = summarizeRegions(projects);
                 geojson.features.forEach((feature) => {
@@ -278,7 +286,8 @@ export default function PsipMap({
                     status: summary?.status || 'No data',
                     regionColor: regionColors[region] || '#94a3b8',
                   };
-                  if (summary) extendGeometryBounds(bounds, feature.geometry.coordinates);
+                  if (summary)
+                    extendGeometryBounds(bounds, feature.geometry.coordinates);
                 });
                 map.addSource('psip-regions', {
                   type: 'geojson',
@@ -290,14 +299,21 @@ export default function PsipMap({
                   type: 'fill',
                   source: 'psip-regions',
                   paint: {
-                    'fill-color': ['coalesce', ['get', 'regionColor'], '#94a3b8'],
+                    'fill-color': [
+                      'coalesce',
+                      ['get', 'regionColor'],
+                      '#94a3b8',
+                    ],
                     'fill-opacity': [
                       'case',
-                      ['boolean', ['feature-state', 'hover'], false],
-                      0.78,
                       ['boolean', ['get', 'hasData'], false],
-                      0.68,
-                      0.3,
+                      [
+                        'case',
+                        ['boolean', ['feature-state', 'hover'], false],
+                        0.78,
+                        0.68,
+                      ],
+                      0,
                     ],
                   },
                 });
@@ -319,7 +335,9 @@ export default function PsipMap({
                 });
                 let hoveredId: string | number | undefined;
                 map.on('mousemove', 'psip-regions-fill', (event) => {
-                  const feature = event.features?.[0] as RegionFeature | undefined;
+                  const feature = event.features?.[0] as
+                    | RegionFeature
+                    | undefined;
                   if (!feature) return;
                   if (hoveredId !== undefined)
                     map.setFeatureState(
@@ -333,11 +351,14 @@ export default function PsipMap({
                       { hover: true },
                     );
                   const rawRegion = feature.properties?.region;
-                  const region = typeof rawRegion === 'string' ? rawRegion : 'Region';
+                  const region =
+                    typeof rawRegion === 'string' ? rawRegion : 'Region';
                   map.getCanvas().style.cursor = 'pointer';
                   popup
                     .setLngLat(event.lngLat)
-                    .setDOMContent(regionPopupContent(region, summaries.get(region)))
+                    .setDOMContent(
+                      regionPopupContent(region, summaries.get(region)),
+                    )
                     .addTo(map);
                 });
                 map.on('mouseleave', 'psip-regions-fill', () => {
@@ -357,7 +378,10 @@ export default function PsipMap({
                 const points: ProjectPointCollection = {
                   type: 'FeatureCollection',
                   features: projects.flatMap((project, projectIndex) => {
-                    if (!Number.isFinite(project.lng) || !Number.isFinite(project.lat)) {
+                    if (
+                      !Number.isFinite(project.lng) ||
+                      !Number.isFinite(project.lat)
+                    ) {
                       return [];
                     }
                     const buildingIndex = Math.max(
@@ -368,7 +392,10 @@ export default function PsipMap({
                       view === 'Sites Operational Readiness Locator'
                         ? statusColors[project.readiness]
                         : buildingColors[buildingIndex % buildingColors.length];
-                    const coordinates: [number, number] = [project.lng!, project.lat!];
+                    const coordinates: [number, number] = [
+                      project.lng!,
+                      project.lat!,
+                    ];
                     bounds.extend(coordinates);
                     return [
                       {
@@ -441,11 +468,23 @@ export default function PsipMap({
                     | undefined;
                   if (!feature || feature.geometry.type !== 'Point') return;
                   const clusterId = Number(feature.properties?.cluster_id);
-                  const source = map.getSource('psip-projects') as mapboxgl.GeoJSONSource;
-                  source.getClusterExpansionZoom(clusterId, (clusterError, zoom) => {
-                    if (clusterError || zoom === null || zoom === undefined) return;
-                    map.easeTo({ center: feature.geometry.coordinates as [number, number], zoom });
-                  });
+                  const source = map.getSource(
+                    'psip-projects',
+                  ) as mapboxgl.GeoJSONSource;
+                  source.getClusterExpansionZoom(
+                    clusterId,
+                    (clusterError, zoom) => {
+                      if (clusterError || zoom === null || zoom === undefined)
+                        return;
+                      map.easeTo({
+                        center: feature.geometry.coordinates as [
+                          number,
+                          number,
+                        ],
+                        zoom,
+                      });
+                    },
+                  );
                 });
                 const popup = new mapboxgl.Popup({
                   closeButton: false,
@@ -457,8 +496,10 @@ export default function PsipMap({
                   const feature = event.features?.[0] as unknown as
                     | MapPointFeature
                     | undefined;
-                  const project = projects[Number(feature?.properties?.projectIndex)];
-                  if (!feature || feature.geometry.type !== 'Point' || !project) return;
+                  const project =
+                    projects[Number(feature?.properties?.projectIndex)];
+                  if (!feature || feature.geometry.type !== 'Point' || !project)
+                    return;
                   map.getCanvas().style.cursor = 'pointer';
                   popup
                     .setLngLat(feature.geometry.coordinates as [number, number])
@@ -473,7 +514,8 @@ export default function PsipMap({
                   const feature = event.features?.[0] as unknown as
                     | MapPointFeature
                     | undefined;
-                  const project = projects[Number(feature?.properties?.projectIndex)];
+                  const project =
+                    projects[Number(feature?.properties?.projectIndex)];
                   if (project) selectRef.current(project);
                 });
               }
@@ -485,13 +527,17 @@ export default function PsipMap({
             } catch (cause) {
               if (controller.signal.aborted) return;
               console.error('Map data failed to render', cause);
-              setError('The map data could not be rendered. The table remains available.');
+              setError(
+                'The map data could not be rendered. The table remains available.',
+              );
               setLoading(false);
             }
           });
           map.on('error', () => {
             if (!disposed) {
-              setError('The map tiles could not be loaded. The table remains available.');
+              setError(
+                'The map tiles could not be loaded. The table remains available.',
+              );
               setLoading(false);
             }
           });
