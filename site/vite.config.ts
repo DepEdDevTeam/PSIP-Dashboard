@@ -46,6 +46,13 @@ export default defineConfig(async () => {
 
   return {
     css: { postcss: { plugins: [tailwindcss()] } },
+    optimizeDeps: {
+      include: ['react', 'react-dom', 'react-dom/client'],
+      exclude: [
+        'lucide-react/dist/esm/Icon.mjs',
+        'vinext/dist/shims/internal/app-prefetch-fetch-queue.js',
+      ],
+    },
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,

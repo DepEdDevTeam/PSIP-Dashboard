@@ -1,14 +1,6 @@
-import type {ReadinessStatus,SchoolProject} from '@/lib/psip-data';
+import type {PsipRecord,ReadinessStatus,SchoolProject} from '@/lib/psip-data';
 
-const API_BASE=(process.env.NEXT_PUBLIC_PSIP_API_URL||'http://127.0.0.1:8000').replace(/\/$/,'');
-
-type FabricRecord={
-  recordId:string; schoolId:string; schoolName:string; projectId:string|null;
-  region:string; division:string; municipality:string; latitude:number|null; longitude:number|null;
-  buildingType:string|null; classrooms:number; readiness:ReadinessStatus;
-  demolition:boolean; siteImprovement:boolean; slopeProtection:boolean;
-  facilities:{academic:number;workshop:number;ictLab:number;scienceLab:number;audioVisual:number;homeEconomics:number};
-};
+type FabricRecord=PsipRecord;
 
 export type DashboardApiResponse={
   generatedAt:string; snapshotDate:string|null;
@@ -36,10 +28,6 @@ function classifyBuilding(buildingType:string|null){
   return 'High-rise';
 }
 
-function readinessProgress(readiness:ReadinessStatus){
-  return readiness==='Ready'?100:readiness==='Pending'?60:readiness==='At risk'?30:0;
-}
-
 export function toSchoolProject(record:FabricRecord):SchoolProject{
   return {
     id:record.schoolId, recordId:record.recordId, projectId:record.projectId,
@@ -48,7 +36,10 @@ export function toSchoolProject(record:FabricRecord):SchoolProject{
     classrooms:record.classrooms, readiness:record.readiness,
     demolition:record.demolition, siteImprovement:record.siteImprovement,
     slopeProtection:record.slopeProtection, lat:record.latitude, lng:record.longitude,
-    floors:inferFloors(record.buildingType), completion:readinessProgress(record.readiness),
+    floors:inferFloors(record.buildingType), completion:null,
+    effectiveStartDate:record.effectiveStartDate,
+    effectiveEndDate:record.effectiveEndDate,
+    isCurrent:record.isCurrent,
     facilities:{
       academic:record.facilities.academic,
       audioVisual:record.facilities.audioVisual,
@@ -61,19 +52,11 @@ export function toSchoolProject(record:FabricRecord):SchoolProject{
 }
 
 export async function fetchDashboard(signal?:AbortSignal){
-  const response=await fetch(`${API_BASE}/api/dashboard`,{headers:{Accept:'application/json'},signal});
+  const response=await fetch('/api/dashboard',{headers:{Accept:'application/json'},signal,cache:'no-store'});
   if(!response.ok){
     const payload=await response.json().catch(()=>null) as {detail?:string}|null;
     throw new Error(payload?.detail||`Dashboard API returned HTTP ${response.status}.`);
   }
   const dashboard=await response.json() as DashboardApiResponse;
   return {...dashboard,projects:dashboard.records.map(toSchoolProject)};
-}
-
-export async function fetchSchool(schoolId:string){
-  const response=await fetch(`${API_BASE}/api/schools/${encodeURIComponent(schoolId)}`,{headers:{Accept:'application/json'},cache:'no-store'});
-  if(response.status===404)return null;
-  if(!response.ok)throw new Error(`School API returned HTTP ${response.status}.`);
-  const payload=await response.json() as {schoolId:string;schoolName:string;records:FabricRecord[]};
-  return payload.records.length?toSchoolProject(payload.records[0]):null;
 }
