@@ -1,4 +1,8 @@
-import type {PsipRecord,ReadinessStatus,SchoolProject} from '@/lib/psip-data';
+import type {PsipRecord,ReadinessStatus,SchoolProject,SchoolResponse} from '@/lib/psip-data';
+
+const DASHBOARD_CACHE_KEY = 'psip-dashboard-cache-v1';
+const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
+let dashboardPromise: Promise<DashboardApiResponse> | null = null;
 
 type FabricRecord=PsipRecord;
 
@@ -51,12 +55,73 @@ export function toSchoolProject(record:FabricRecord):SchoolProject{
   };
 }
 
-export async function fetchDashboard(signal?:AbortSignal){
-  const response=await fetch('/api/dashboard',{headers:{Accept:'application/json'},signal,cache:'no-store'});
-  if(!response.ok){
-    const payload=await response.json().catch(()=>null) as {detail?:string}|null;
-    throw new Error(payload?.detail||`Dashboard API returned HTTP ${response.status}.`);
+type CachedDashboard = { expiresAt: number; data: DashboardApiResponse };
+
+function readBrowserCache(): DashboardApiResponse | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(DASHBOARD_CACHE_KEY) || 'null') as CachedDashboard | null;
+    if (cached && cached.expiresAt > Date.now()) return cached.data;
+    window.localStorage.removeItem(DASHBOARD_CACHE_KEY);
+  } catch {
+    // Storage can be unavailable or contain an older incompatible payload.
   }
-  const dashboard=await response.json() as DashboardApiResponse;
-  return {...dashboard,projects:dashboard.records.map(toSchoolProject)};
+  return null;
+}
+
+function writeBrowserCache(data: DashboardApiResponse) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      DASHBOARD_CACHE_KEY,
+      JSON.stringify({ expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS, data }),
+    );
+  } catch {
+    // A full/blocked browser cache must not prevent live data from loading.
+  }
+}
+
+function requestDashboard(forceRefresh = false): Promise<DashboardApiResponse> {
+  if (!forceRefresh) {
+    const cached = readBrowserCache();
+    if (cached) return Promise.resolve(cached);
+    if (dashboardPromise) return dashboardPromise;
+  }
+  dashboardPromise = fetch('/api/dashboard',{headers:{Accept:'application/json'},cache:'no-store'})
+    .then(async (response) => {
+      if(!response.ok){
+        const payload=await response.json().catch(()=>null) as {detail?:string}|null;
+        throw new Error(payload?.detail||`Dashboard API returned HTTP ${response.status}.`);
+      }
+      return await response.json() as DashboardApiResponse;
+    })
+    .then((data) => {
+      writeBrowserCache(data);
+      return data;
+    })
+    .finally(() => {
+      dashboardPromise = null;
+    });
+  return dashboardPromise;
+}
+
+function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new DOMException('The request was aborted.', 'AbortError'));
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(new DOMException('The request was aborted.', 'AbortError'));
+    signal.addEventListener('abort', abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+export function fetchDashboard(signal?:AbortSignal, forceRefresh = false){
+  return withAbort(requestDashboard(forceRefresh).then((dashboard) => ({...dashboard,projects:dashboard.records.map(toSchoolProject)})), signal);
+}
+
+export function fetchSchool(schoolId:string, signal?:AbortSignal): Promise<SchoolResponse>{
+  return withAbort(requestDashboard().then((dashboard) => {
+    const records = dashboard.records.filter((record) => record.schoolId === schoolId);
+    return { schoolId, schoolName: records[0]?.schoolName || '', records };
+  }), signal);
 }

@@ -21,12 +21,12 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ApiError,
-  fetchSchool,
   formatDate,
   type PsipRecord,
   type ReadinessStatus,
   type SchoolResponse,
 } from '@/lib/psip-data';
+import { fetchSchool } from '@/lib/psip-api';
 
 const number = new Intl.NumberFormat('en-US');
 

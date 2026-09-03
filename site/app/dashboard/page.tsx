@@ -177,7 +177,7 @@ export default function DashboardPage() {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetchDashboard(controller.signal)
+      fetchDashboard(controller.signal, reloadKey > 0)
       .then((data) => {
         setProjects(data.projects);
         setApiOptions({
