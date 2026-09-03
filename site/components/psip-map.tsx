@@ -1,11 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
-import ProjectHoverCard from '@/components/project-hover-card';
+import { useEffect, useRef, useState } from 'react';
 import type { ReadinessStatus, SchoolProject } from '@/lib/psip-data';
 
-const statusColors = {
+const statusColors: Record<ReadinessStatus, string> = {
   Ready: '#14855f',
   Pending: '#c57a0a',
   'At risk': '#c83f50',
@@ -44,15 +42,30 @@ type RegionSummary = {
 };
 type RegionFeature = {
   id?: string | number;
-  geometry: {
-    type: 'Polygon' | 'MultiPolygon';
-    coordinates: unknown;
-  };
+  geometry: { type: 'Polygon' | 'MultiPolygon'; coordinates: unknown };
   properties: Record<string, unknown>;
 };
 type RegionFeatureCollection = {
   type: 'FeatureCollection';
   features: RegionFeature[];
+};
+type ProjectPointCollection = {
+  type: 'FeatureCollection';
+  features: Array<{
+    type: 'Feature';
+    geometry: { type: 'Point'; coordinates: [number, number] };
+    properties: {
+      projectIndex: number;
+      color: string;
+      schoolName: string;
+      classrooms: number;
+      readiness: ReadinessStatus;
+    };
+  }>;
+};
+type MapPointFeature = {
+  geometry: { type: string; coordinates: [number, number] };
+  properties?: Record<string, unknown>;
 };
 
 const regionAliases: Record<string, string> = {
@@ -99,10 +112,7 @@ const regionAliases: Record<string, string> = {
 };
 
 function canonicalRegion(value: string) {
-  const key = value
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, ' ')
-    .trim();
+  const key = value.toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
   return regionAliases[key] || value;
 }
 
@@ -156,14 +166,28 @@ function regionPopupContent(region: string, summary?: RegionSummary) {
   root.appendChild(headline);
   if (summary) {
     const detail = document.createElement('p');
-    detail.textContent = `${summary.projects} projects · ${summary.sites} school sites`;
+    detail.textContent = `${summary.projects} project records · ${summary.sites} school sites`;
     detail.style.cssText = 'margin:4px 0 0;color:#526079;font-size:12px';
-    const statuses = document.createElement('p');
-    statuses.textContent = `Ready ${summary.counts.Ready} · Pending ${summary.counts.Pending} · At risk ${summary.counts['At risk']} · Unknown ${summary.counts.Unknown}`;
-    statuses.style.cssText = 'margin:5px 0 0;color:#526079;font-size:11px';
     root.appendChild(detail);
-    root.appendChild(statuses);
   }
+  return root;
+}
+
+function projectPopupContent(project: SchoolProject) {
+  const root = document.createElement('div');
+  const title = document.createElement('strong');
+  title.textContent = project.name;
+  title.style.cssText = 'display:block;color:#102044;font-size:14px';
+  const location = document.createElement('p');
+  location.textContent = `${project.division} · ${project.region}`;
+  location.style.cssText = 'margin:5px 0 0;color:#526079;font-size:11px';
+  const detail = document.createElement('p');
+  detail.textContent = `${project.classrooms} classrooms · ${project.readiness}`;
+  detail.style.cssText =
+    'margin:5px 0 0;color:#102044;font-size:12px;font-weight:700';
+  root.appendChild(title);
+  root.appendChild(location);
+  root.appendChild(detail);
   return root;
 }
 
@@ -186,7 +210,7 @@ function extendGeometryBounds(
 export default function PsipMap({
   projects,
   onSelect,
-  view = 'Buildings Geographical Location',
+  view = REGIONAL_VIEW,
 }: {
   projects: SchoolProject[];
   onSelect: (project: SchoolProject) => void;
@@ -194,209 +218,301 @@ export default function PsipMap({
 }) {
   const host = useRef<HTMLDivElement>(null);
   const selectRef = useRef(onSelect);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
   useEffect(() => {
     selectRef.current = onSelect;
   }, [onSelect]);
+
   useEffect(() => {
     const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
     if (!host.current || !token?.startsWith('pk.')) return;
     let disposed = false;
     let cleanup = () => {};
     const controller = new AbortController();
-    void import('mapbox-gl').then(({ default: mapboxgl }) => {
-      if (disposed || !host.current) return;
-      mapboxgl.accessToken = token;
-      const map = new mapboxgl.Map({
-        container: host.current,
-        style: 'mapbox://styles/mapbox/light-v11',
-        center: [122.3, 12.8],
-        zoom: 4.7,
-        minZoom: 3.5,
-        maxZoom: 14,
-        attributionControl: true,
-      });
-      map.addControl(
-        new mapboxgl.NavigationControl({ showCompass: false }),
-        'top-right',
-      );
-      const bounds = new mapboxgl.LngLatBounds();
-      const markers: mapboxgl.Marker[] = [];
-      const reactRoots: Root[] = [];
-      if (view !== REGIONAL_VIEW)
-        projects
-          .filter(
-            (project) =>
-              Number.isFinite(project.lng) && Number.isFinite(project.lat),
-          )
-          .forEach((project) => {
-            const markerHost = document.createElement('div');
-            const buildingIndex = Math.max(
-              0,
-              Array.from(new Set(projects.map((p) => p.buildingType))).indexOf(
-                project.buildingType,
-              ),
-            );
-            const color =
-              view === 'Sites Operational Readiness Locator'
-                ? statusColors[project.readiness]
-                : buildingColors[buildingIndex % buildingColors.length];
-            markerHost.style.setProperty('--marker-color', color);
-            const reactRoot = createRoot(markerHost);
-            reactRoot.render(
-              <ProjectHoverCard
-                project={project}
-                onSelect={() => selectRef.current(project)}
-              />,
-            );
-            reactRoots.push(reactRoot);
-            const marker = new mapboxgl.Marker({
-              element: markerHost,
-              anchor: 'center',
-            })
-              .setLngLat([project.lng!, project.lat!])
-              .addTo(map);
-            markers.push(marker);
-            bounds.extend([project.lng!, project.lat!]);
+    setLoading(true);
+    setError('');
+
+    const idleTimer = window.setTimeout(() => {
+      void import('mapbox-gl')
+        .then(({ default: mapboxgl }) => {
+          if (disposed || !host.current) return;
+          mapboxgl.accessToken = token;
+          const map = new mapboxgl.Map({
+            container: host.current,
+            style: 'mapbox://styles/mapbox/light-v11',
+            center: [122.3, 12.8],
+            zoom: 4.7,
+            minZoom: 3.5,
+            maxZoom: 14,
+            attributionControl: true,
           });
-      map.once('load', async () => {
-        if (view === REGIONAL_VIEW) {
-          try {
-            const response = await fetch('/data/philippines-regions.geojson', {
-              signal: controller.signal,
-            });
-            if (!response.ok)
-              throw new Error('Regional boundaries unavailable');
-            const geojson = (await response.json()) as RegionFeatureCollection;
+          map.addControl(
+            new mapboxgl.NavigationControl({ showCompass: false }),
+            'top-right',
+          );
+          const bounds = new mapboxgl.LngLatBounds();
+
+          map.once('load', async () => {
             if (disposed) return;
-            const summaries = summarizeRegions(projects);
-            geojson.features.forEach((feature) => {
-              const rawRegion = feature.properties.region;
-              const region = canonicalRegion(
-                typeof rawRegion === 'string' ? rawRegion : 'Region',
-              );
-              const summary = summaries.get(region);
-              feature.properties = {
-                ...feature.properties,
-                region,
-                hasData: Boolean(summary),
-                status: summary?.status || 'No data',
-                regionColor: regionColors[region] || '#94a3b8',
-              };
-              if (summary)
-                extendGeometryBounds(bounds, feature.geometry.coordinates);
-            });
-            map.addSource('psip-regions', {
-              type: 'geojson',
-              data: geojson as never,
-              generateId: true,
-            });
-            map.addLayer({
-              id: 'psip-regions-fill',
-              type: 'fill',
-              source: 'psip-regions',
-              paint: {
-                'fill-color': ['coalesce', ['get', 'regionColor'], '#94a3b8'],
-                'fill-opacity': [
-                  'case',
-                  ['boolean', ['feature-state', 'hover'], false],
-                  0.78,
-                  ['boolean', ['get', 'hasData'], false],
-                  0.68,
-                  0.3,
-                ],
-              },
-            });
-            map.addLayer({
-              id: 'psip-regions-outline',
-              type: 'line',
-              source: 'psip-regions',
-              paint: {
-                'line-color': [
-                  'case',
-                  ['boolean', ['get', 'hasData'], false],
-                  '#173a70',
-                  '#94a3b8',
-                ],
-                'line-opacity': [
-                  'case',
-                  ['boolean', ['get', 'hasData'], false],
-                  0.9,
-                  0.35,
-                ],
-                'line-width': [
-                  'case',
-                  ['boolean', ['get', 'hasData'], false],
-                  1.3,
-                  0.7,
-                ],
-              },
-            });
-            const popup = new mapboxgl.Popup({
-              closeButton: false,
-              closeOnClick: false,
-              maxWidth: '290px',
-              offset: 12,
-            });
-            let hoveredId: string | number | undefined;
-            map.on('mousemove', 'psip-regions-fill', (event) => {
-              const feature = event.features?.[0] as RegionFeature | undefined;
-              if (!feature) return;
-              if (hoveredId !== undefined)
-                map.setFeatureState(
-                  { source: 'psip-regions', id: hoveredId },
-                  { hover: false },
+            try {
+              if (view === REGIONAL_VIEW) {
+                const response = await fetch('/data/philippines-regions.geojson', {
+                  signal: controller.signal,
+                });
+                if (!response.ok) throw new Error('Regional boundaries unavailable');
+                const geojson = (await response.json()) as RegionFeatureCollection;
+                if (disposed) return;
+                const summaries = summarizeRegions(projects);
+                geojson.features.forEach((feature) => {
+                  const rawRegion = feature.properties.region;
+                  const region = canonicalRegion(
+                    typeof rawRegion === 'string' ? rawRegion : 'Region',
+                  );
+                  const summary = summaries.get(region);
+                  feature.properties = {
+                    ...feature.properties,
+                    region,
+                    hasData: Boolean(summary),
+                    status: summary?.status || 'No data',
+                    regionColor: regionColors[region] || '#94a3b8',
+                  };
+                  if (summary) extendGeometryBounds(bounds, feature.geometry.coordinates);
+                });
+                map.addSource('psip-regions', {
+                  type: 'geojson',
+                  data: geojson as never,
+                  generateId: true,
+                });
+                map.addLayer({
+                  id: 'psip-regions-fill',
+                  type: 'fill',
+                  source: 'psip-regions',
+                  paint: {
+                    'fill-color': ['coalesce', ['get', 'regionColor'], '#94a3b8'],
+                    'fill-opacity': [
+                      'case',
+                      ['boolean', ['feature-state', 'hover'], false],
+                      0.78,
+                      ['boolean', ['get', 'hasData'], false],
+                      0.68,
+                      0.3,
+                    ],
+                  },
+                });
+                map.addLayer({
+                  id: 'psip-regions-outline',
+                  type: 'line',
+                  source: 'psip-regions',
+                  paint: {
+                    'line-color': '#173a70',
+                    'line-opacity': 0.72,
+                    'line-width': 1,
+                  },
+                });
+                const popup = new mapboxgl.Popup({
+                  closeButton: false,
+                  closeOnClick: false,
+                  maxWidth: '290px',
+                  offset: 12,
+                });
+                let hoveredId: string | number | undefined;
+                map.on('mousemove', 'psip-regions-fill', (event) => {
+                  const feature = event.features?.[0] as RegionFeature | undefined;
+                  if (!feature) return;
+                  if (hoveredId !== undefined)
+                    map.setFeatureState(
+                      { source: 'psip-regions', id: hoveredId },
+                      { hover: false },
+                    );
+                  hoveredId = feature.id;
+                  if (hoveredId !== undefined)
+                    map.setFeatureState(
+                      { source: 'psip-regions', id: hoveredId },
+                      { hover: true },
+                    );
+                  const rawRegion = feature.properties?.region;
+                  const region = typeof rawRegion === 'string' ? rawRegion : 'Region';
+                  map.getCanvas().style.cursor = 'pointer';
+                  popup
+                    .setLngLat(event.lngLat)
+                    .setDOMContent(regionPopupContent(region, summaries.get(region)))
+                    .addTo(map);
+                });
+                map.on('mouseleave', 'psip-regions-fill', () => {
+                  if (hoveredId !== undefined)
+                    map.setFeatureState(
+                      { source: 'psip-regions', id: hoveredId },
+                      { hover: false },
+                    );
+                  hoveredId = undefined;
+                  map.getCanvas().style.cursor = '';
+                  popup.remove();
+                });
+              } else {
+                const buildingTypes = Array.from(
+                  new Set(projects.map((project) => project.buildingType)),
                 );
-              hoveredId = feature.id;
-              if (hoveredId !== undefined)
-                map.setFeatureState(
-                  { source: 'psip-regions', id: hoveredId },
-                  { hover: true },
-                );
-              const rawRegion = feature.properties?.region;
-              const region =
-                typeof rawRegion === 'string' ? rawRegion : 'Region';
-              map.getCanvas().style.cursor = 'pointer';
-              popup
-                .setLngLat(event.lngLat)
-                .setDOMContent(
-                  regionPopupContent(region, summaries.get(region)),
-                )
-                .addTo(map);
-            });
-            map.on('mouseleave', 'psip-regions-fill', () => {
-              if (hoveredId !== undefined)
-                map.setFeatureState(
-                  { source: 'psip-regions', id: hoveredId },
-                  { hover: false },
-                );
-              hoveredId = undefined;
-              map.getCanvas().style.cursor = '';
-              popup.remove();
-            });
-          } catch (error) {
-            if (!controller.signal.aborted)
-              console.error('Regional boundaries failed to render', error);
+                const points: ProjectPointCollection = {
+                  type: 'FeatureCollection',
+                  features: projects.flatMap((project, projectIndex) => {
+                    if (!Number.isFinite(project.lng) || !Number.isFinite(project.lat)) {
+                      return [];
+                    }
+                    const buildingIndex = Math.max(
+                      0,
+                      buildingTypes.indexOf(project.buildingType),
+                    );
+                    const color =
+                      view === 'Sites Operational Readiness Locator'
+                        ? statusColors[project.readiness]
+                        : buildingColors[buildingIndex % buildingColors.length];
+                    const coordinates: [number, number] = [project.lng!, project.lat!];
+                    bounds.extend(coordinates);
+                    return [
+                      {
+                        type: 'Feature' as const,
+                        geometry: { type: 'Point' as const, coordinates },
+                        properties: {
+                          projectIndex,
+                          color,
+                          schoolName: project.name,
+                          classrooms: project.classrooms,
+                          readiness: project.readiness,
+                        },
+                      },
+                    ];
+                  }),
+                };
+                map.addSource('psip-projects', {
+                  type: 'geojson',
+                  data: points as never,
+                  cluster: true,
+                  clusterMaxZoom: 12,
+                  clusterRadius: 48,
+                });
+                map.addLayer({
+                  id: 'psip-clusters',
+                  type: 'circle',
+                  source: 'psip-projects',
+                  filter: ['has', 'point_count'],
+                  paint: {
+                    'circle-color': '#1854bd',
+                    'circle-radius': [
+                      'step',
+                      ['get', 'point_count'],
+                      18,
+                      25,
+                      23,
+                      100,
+                      29,
+                    ],
+                    'circle-stroke-color': '#ffffff',
+                    'circle-stroke-width': 3,
+                  },
+                });
+                map.addLayer({
+                  id: 'psip-cluster-count',
+                  type: 'symbol',
+                  source: 'psip-projects',
+                  filter: ['has', 'point_count'],
+                  layout: {
+                    'text-field': ['get', 'point_count_abbreviated'],
+                    'text-size': 12,
+                  },
+                  paint: { 'text-color': '#ffffff' },
+                });
+                map.addLayer({
+                  id: 'psip-points',
+                  type: 'circle',
+                  source: 'psip-projects',
+                  filter: ['!', ['has', 'point_count']],
+                  paint: {
+                    'circle-color': ['get', 'color'],
+                    'circle-radius': 7,
+                    'circle-stroke-color': '#ffffff',
+                    'circle-stroke-width': 2,
+                  },
+                });
+                map.on('click', 'psip-clusters', (event) => {
+                  const feature = event.features?.[0] as unknown as
+                    | MapPointFeature
+                    | undefined;
+                  if (!feature || feature.geometry.type !== 'Point') return;
+                  const clusterId = Number(feature.properties?.cluster_id);
+                  const source = map.getSource('psip-projects') as mapboxgl.GeoJSONSource;
+                  source.getClusterExpansionZoom(clusterId, (clusterError, zoom) => {
+                    if (clusterError || zoom === null || zoom === undefined) return;
+                    map.easeTo({ center: feature.geometry.coordinates as [number, number], zoom });
+                  });
+                });
+                const popup = new mapboxgl.Popup({
+                  closeButton: false,
+                  closeOnClick: false,
+                  maxWidth: '290px',
+                  offset: 12,
+                });
+                map.on('mouseenter', 'psip-points', (event) => {
+                  const feature = event.features?.[0] as unknown as
+                    | MapPointFeature
+                    | undefined;
+                  const project = projects[Number(feature?.properties?.projectIndex)];
+                  if (!feature || feature.geometry.type !== 'Point' || !project) return;
+                  map.getCanvas().style.cursor = 'pointer';
+                  popup
+                    .setLngLat(feature.geometry.coordinates as [number, number])
+                    .setDOMContent(projectPopupContent(project))
+                    .addTo(map);
+                });
+                map.on('mouseleave', 'psip-points', () => {
+                  map.getCanvas().style.cursor = '';
+                  popup.remove();
+                });
+                map.on('click', 'psip-points', (event) => {
+                  const feature = event.features?.[0] as unknown as
+                    | MapPointFeature
+                    | undefined;
+                  const project = projects[Number(feature?.properties?.projectIndex)];
+                  if (project) selectRef.current(project);
+                });
+              }
+              if (!bounds.isEmpty()) {
+                map.fitBounds(bounds, { padding: 48, maxZoom: 7, duration: 0 });
+              }
+              requestAnimationFrame(() => map.resize());
+              setLoading(false);
+            } catch (cause) {
+              if (controller.signal.aborted) return;
+              console.error('Map data failed to render', cause);
+              setError('The map data could not be rendered. The table remains available.');
+              setLoading(false);
+            }
+          });
+          map.on('error', () => {
+            if (!disposed) {
+              setError('The map tiles could not be loaded. The table remains available.');
+              setLoading(false);
+            }
+          });
+          cleanup = () => map.remove();
+        })
+        .catch(() => {
+          if (!disposed) {
+            setError('The interactive map could not be initialized.');
+            setLoading(false);
           }
-        }
-        if (!bounds.isEmpty())
-          map.fitBounds(bounds, { padding: 48, maxZoom: 7, duration: 0 });
-        requestAnimationFrame(() => map.resize());
-      });
-      map.on('error', (event) =>
-        console.error('Mapbox failed to render', event.error),
-      );
-      cleanup = () => {
-        reactRoots.forEach((root) => root.unmount());
-        markers.forEach((marker) => marker.remove());
-        map.remove();
-      };
-    });
+        });
+    }, 120);
+
     return () => {
       disposed = true;
+      window.clearTimeout(idleTimer);
       controller.abort();
       cleanup();
     };
   }, [projects, view]);
+
   const tokenReady =
     process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.startsWith('pk.');
   if (!tokenReady)
@@ -406,15 +522,27 @@ export default function PsipMap({
       </div>
     );
   return (
-    <div
-      ref={host}
-      className="h-full w-full"
-      role="application"
-      aria-label={
-        view === REGIONAL_VIEW
-          ? 'Interactive Mapbox map shaded by regional operational readiness'
-          : 'Interactive Mapbox map of PSIP school projects'
-      }
-    />
+    <div className="relative h-full w-full">
+      <div
+        ref={host}
+        className="h-full w-full"
+        role="application"
+        aria-label={
+          view === REGIONAL_VIEW
+            ? 'Interactive Mapbox map shaded by regional operational readiness'
+            : 'Clustered interactive Mapbox map of PSIP school projects'
+        }
+      />
+      {loading && (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center bg-[#eaf0f7] text-sm font-semibold text-[#526079]">
+          Loading map data…
+        </div>
+      )}
+      {error && (
+        <div className="absolute bottom-4 left-1/2 z-[600] w-[min(90%,420px)] -translate-x-1/2 rounded-xl border border-red-200 bg-white px-4 py-3 text-center text-xs font-semibold text-red-700 shadow-lg">
+          {error}
+        </div>
+      )}
+    </div>
   );
 }

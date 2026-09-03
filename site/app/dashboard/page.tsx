@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import PsipMap from '@/components/psip-map';
+import dynamic from 'next/dynamic';
 import {
   createColumnHelper,
   flexRender,
@@ -62,6 +62,15 @@ import {
 } from '@/components/ui/table';
 import type { ProjectFilters, SchoolProject } from '@/lib/psip-data';
 import { fetchDashboard } from '@/lib/psip-api';
+
+const PsipMap = dynamic(() => import('@/components/psip-map'), {
+  ssr: false,
+  loading: () => (
+    <div className="grid h-full place-items-center bg-[#eaf0f7] text-sm font-semibold text-[#526079]">
+      Preparing the interactive map…
+    </div>
+  ),
+});
 
 const number = new Intl.NumberFormat('en-PH');
 const compact = new Intl.NumberFormat('en-PH', {
@@ -135,9 +144,7 @@ export default function DashboardPage() {
   const [selected, setSelected] = useState<SchoolProject | null>(null);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [view, setView] = useState<DashboardView>('map');
-  const [lens, setLens] = useState<AnalyticsLens>(
-    'Buildings Geographical Location',
-  );
+  const [lens, setLens] = useState<AnalyticsLens>('Regional Map View');
   const [projects, setProjects] = useState<SchoolProject[]>([]);
   const [apiOptions, setApiOptions] = useState({
     regions: [] as string[],
@@ -205,7 +212,7 @@ export default function DashboardPage() {
       if (value) query.set(key === 'buildingType' ? 'building' : key, value);
     });
     if (view !== 'map') query.set('view', view);
-    if (lens !== 'Buildings Geographical Location') query.set('lens', lens);
+    if (lens !== 'Regional Map View') query.set('lens', lens);
     if (selected) query.set('school', selected.id);
     history.replaceState(
       null,

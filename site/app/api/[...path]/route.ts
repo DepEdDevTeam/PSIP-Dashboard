@@ -36,6 +36,12 @@ export async function GET(
       headers: {
         'Content-Type': response.headers.get('Content-Type') || 'application/json',
         'Cache-Control': 'no-store',
+        ...(response.headers.get('X-PSIP-Cache')
+          ? { 'X-PSIP-Cache': response.headers.get('X-PSIP-Cache') as string }
+          : {}),
+        ...(response.headers.get('Server-Timing')
+          ? { 'Server-Timing': response.headers.get('Server-Timing') as string }
+          : {}),
       },
     });
   } catch (error) {
