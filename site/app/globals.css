@@ -24,16 +24,16 @@
   --input: oklch(0.922 0 0); --ring: oklch(0.708 0 0); --background: oklch(1 0 0); --foreground: oklch(0.145 0 0); --chart-1: oklch(0.87 0 0); --chart-2: oklch(0.556 0 0); --chart-3: oklch(0.439 0 0); --chart-4: oklch(0.371 0 0); --chart-5: oklch(0.269 0 0); --radius: 0.625rem; --sidebar: oklch(0.985 0 0); --sidebar-foreground: oklch(0.145 0 0); --sidebar-primary: oklch(0.205 0 0); --sidebar-primary-foreground: oklch(0.985 0 0); --sidebar-accent: oklch(0.97 0 0); --sidebar-accent-foreground: oklch(0.205 0 0); --sidebar-border: oklch(0.922 0 0); --sidebar-ring: oklch(0.708 0 0);
 }
 * { border-color:var(--border); }
-html { background:var(--background); }
-body { margin:0; font-family:var(--font-geist-sans),Arial,sans-serif; }
+html { background:var(--background); min-width:320px; overflow-x:hidden; }
+body { margin:0; min-width:320px; overflow-x:hidden; font-family:var(--font-geist-sans),Arial,sans-serif; }
 button,input,select { font:inherit; }
 :focus-visible { outline:3px solid color-mix(in srgb,var(--ring) 62%,transparent); outline-offset:2px; }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition-duration:.01ms!important; } }
 .mapboxgl-map { font-family:var(--font-geist-sans),Arial,sans-serif; background:#e9eff7; }
 .mapboxgl-ctrl-attrib { font-size:9px!important; }
-.psip-map-marker { display:grid; place-items:center; width:28px; height:28px; padding:0; background:var(--marker-color,#1854bd); border:4px solid #fff; border-radius:999px; box-shadow:0 4px 14px rgba(11,36,95,.28); cursor:pointer; transition:transform .15s ease,box-shadow .15s ease; }
-.psip-map-marker:hover,.psip-map-marker:focus-visible { transform:scale(1.14); box-shadow:0 6px 18px rgba(11,36,95,.35); }
-.psip-map-marker::after { content:''; width:6px; height:6px; border-radius:999px; background:#fff; }
+.psip-map-marker { display:grid; place-items:center; width:28px; height:28px; min-width:44px; min-height:44px; padding:0; background:radial-gradient(circle,var(--marker-color,#1854bd) 0 34%,#fff 36% 49%,transparent 51%); border:0; border-radius:999px; box-shadow:none; cursor:pointer; touch-action:manipulation; transition:transform .15s ease,filter .15s ease; }
+.psip-map-marker:hover,.psip-map-marker:focus-visible { transform:scale(1.1); filter:drop-shadow(0 6px 9px rgba(11,36,95,.35)); }
+.psip-map-marker::after { content:''; width:5px; height:5px; border-radius:999px; background:#fff; }
 
 .dark {
   --background: oklch(0.145 0 0);

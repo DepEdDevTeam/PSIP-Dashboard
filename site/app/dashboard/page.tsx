@@ -437,7 +437,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <main className="flex h-dvh flex-col overflow-hidden bg-[#edf2f8] text-[#102044]">
+    <main className="flex h-screen h-dvh min-w-0 flex-col overflow-hidden bg-[#edf2f8] text-[#102044]">
       <AppHeader view={view} onNavigate={setView} snapshotDate={snapshotDate} />
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {loading ? (
@@ -574,19 +574,19 @@ function DashboardFilters({
   return (
     <div aria-label="Dashboard filters">
       <div
-        className={`grid gap-2 sm:grid-cols-2 ${showRegion ? 'lg:grid-cols-[1.5fr_repeat(4,1fr)_auto]' : 'lg:grid-cols-[1.5fr_repeat(3,1fr)_auto]'}`}
+        className={`grid min-w-0 grid-cols-2 gap-2 max-[359px]:grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${showRegion ? 'xl:grid-cols-[minmax(240px,1.5fr)_repeat(4,minmax(132px,1fr))_auto]' : 'xl:grid-cols-[minmax(240px,1.5fr)_repeat(3,minmax(140px,1fr))_auto]'}`}
       >
-        <label className="relative">
+        <label className="relative col-span-2 min-w-0 max-[359px]:col-span-1 lg:col-span-3 xl:col-span-1">
           <span className="sr-only">Search schools</span>
           <Search
-            className="pointer-events-none absolute left-3 top-3 size-4 text-[#5e6d85]"
+            className="pointer-events-none absolute left-3 top-3.5 size-4 text-[#5e6d85] xl:top-3"
             aria-hidden="true"
           />
           <input
             value={filters.search}
             onChange={(event) => update('search', event.target.value)}
             placeholder="Search school, ID, or division"
-            className="h-10 w-full rounded-xl border border-[#cad5e3] bg-white pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[#1854bd]"
+            className="h-11 w-full min-w-0 rounded-xl border border-[#cad5e3] bg-white pl-9 pr-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-[#1854bd] sm:text-sm xl:h-10"
           />
         </label>
         {showRegion && (
@@ -619,7 +619,7 @@ function DashboardFilters({
           type="button"
           onClick={clear}
           disabled={!active.length}
-          className="flex h-10 items-center justify-center gap-2 rounded-xl border border-[#cad5e3] bg-white px-4 text-sm font-semibold transition-colors hover:bg-[#f5f8fc] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1854bd] disabled:cursor-not-allowed disabled:opacity-40"
+          className="col-span-2 flex h-11 items-center justify-center gap-2 rounded-xl border border-[#b8c5d6] bg-white px-4 text-sm font-semibold text-[#34445f] transition-colors hover:bg-[#f5f8fc] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1854bd] disabled:cursor-not-allowed disabled:text-[#758197] disabled:opacity-60 max-[359px]:col-span-1 lg:col-span-1 xl:h-10"
         >
           <X className="size-4" aria-hidden="true" />
           Clear
@@ -659,13 +659,13 @@ function FilterSelect({
   options: string[];
 }) {
   return (
-    <label className="relative">
+    <label className="relative min-w-0">
       <span className="sr-only">{label}</span>
       <select
         aria-label={label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full appearance-none rounded-xl border border-[#cad5e3] bg-white pl-3 pr-9 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[#1854bd]"
+        className="h-11 w-full min-w-0 appearance-none truncate rounded-xl border border-[#cad5e3] bg-white pl-3 pr-9 text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[#1854bd] sm:text-sm xl:h-10"
       >
         <option value="">{label}</option>
         {options.map((option) => (
@@ -673,7 +673,7 @@ function FilterSelect({
         ))}
       </select>
       <ChevronDown
-        className="pointer-events-none absolute right-3 top-3 size-4 text-[#526079]"
+        className="pointer-events-none absolute right-3 top-3.5 size-4 text-[#526079] xl:top-3"
         aria-hidden="true"
       />
     </label>
@@ -689,7 +689,7 @@ function LensControl({
 }) {
   return (
     <div
-      className="grid grid-cols-3 gap-1 rounded-xl bg-[#eef3fa] p-1"
+      className="grid w-full min-w-0 grid-cols-1 gap-1 rounded-xl bg-[#eef3fa] p-1 sm:grid-cols-3 xl:max-w-[704px]"
       role="tablist"
       aria-label="Analytics lens"
     >
@@ -701,10 +701,10 @@ function LensControl({
           aria-selected={value === item.value}
           aria-label={item.value}
           onClick={() => onChange(item.value)}
-          className={`min-h-10 rounded-lg px-3 py-2 text-left text-xs font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#1854bd] ${value === item.value ? 'bg-[#1854bd] text-white shadow-sm' : 'text-[#526079] hover:bg-white'}`}
+          className={`min-h-11 min-w-0 rounded-lg px-3 py-2 text-left text-xs font-bold leading-4 transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#1854bd] xl:min-h-10 ${value === item.value ? 'bg-[#1854bd] text-white shadow-sm' : 'text-[#526079] hover:bg-white'}`}
         >
-          <span className="hidden xl:inline">{item.value}</span>
-          <span className="xl:hidden">{item.short}</span>
+          <span className="sm:hidden md:inline">{item.value}</span>
+          <span className="hidden sm:inline md:hidden">{item.short}</span>
         </button>
       ))}
     </div>
@@ -725,15 +725,15 @@ function MapPanel({
   onLensChange: (lens: AnalyticsLens) => void;
 }) {
   return (
-    <article className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#dce5ef]">
-      <div className="relative z-10 mx-3 mt-3 shrink-0 overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-[0_8px_24px_rgba(21,48,93,.12)] backdrop-blur">
+    <article className="relative flex h-full min-h-0 flex-col overflow-x-hidden overflow-y-auto bg-[#dce5ef] sm:overflow-hidden">
+      <div className="relative z-10 mx-2 mt-2 shrink-0 overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-[0_8px_24px_rgba(21,48,93,.12)] backdrop-blur sm:mx-3 sm:mt-3">
         <div className="p-3">{controls}</div>
-        <div className="flex flex-col gap-3 border-t border-[#e2e8f0] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+        <div className="flex flex-col gap-3 border-t border-[#e2e8f0] px-3 py-3 sm:px-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0 xl:max-w-[42%]">
             <p className="text-[10px] font-bold uppercase tracking-[.13em] text-[#2366dc]">
               {lens}
             </p>
-            <h1 className="mt-1 text-lg font-bold">
+            <h1 className="mt-1 text-base font-bold leading-6 sm:text-lg">
               {lens === 'Regional Map View'
                 ? 'Regional readiness across the Philippines'
                 : 'School sites across the Philippines'}
@@ -742,7 +742,7 @@ function MapPanel({
           <LensControl value={lens} onChange={onLensChange} />
         </div>
       </div>
-      <div className="absolute inset-0 bg-[#dce5ef]">
+      <div className="relative mt-2 min-h-[420px] flex-1 bg-[#dce5ef] sm:absolute sm:inset-0 sm:mt-0 sm:min-h-0">
         <PsipMap projects={data} onSelect={onSelect} view={lens} />
         <MapLegend data={data} lens={lens} />
       </div>
@@ -770,7 +770,7 @@ function MapLegend({
             ),
           )}
         </span>
-        Colors identify regions · Hover for readiness details
+        Colors identify regions · Hover or tap for readiness details
       </div>
     );
   const items =

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import type { LngLat } from 'mapbox-gl';
 import ProjectHoverCard from '@/components/project-hover-card';
 import type { ReadinessStatus, SchoolProject } from '@/lib/psip-data';
 
@@ -219,6 +220,12 @@ export default function PsipMap({
         new mapboxgl.NavigationControl({ showCompass: false }),
         'top-right',
       );
+      const resizeMap = () => map.resize();
+      const resizeObserver = new ResizeObserver(() =>
+        requestAnimationFrame(resizeMap),
+      );
+      resizeObserver.observe(host.current);
+      window.visualViewport?.addEventListener('resize', resizeMap);
       const bounds = new mapboxgl.LngLatBounds();
       const markers: mapboxgl.Marker[] = [];
       const reactRoots: Root[] = [];
@@ -332,12 +339,26 @@ export default function PsipMap({
               },
             });
             const popup = new mapboxgl.Popup({
-              closeButton: false,
+              closeButton: true,
               closeOnClick: false,
               maxWidth: '290px',
               offset: 12,
             });
             let hoveredId: string | number | undefined;
+            const showRegionPopup = (
+              feature: RegionFeature,
+              lngLat: LngLat,
+            ) => {
+              const rawRegion = feature.properties?.region;
+              const region =
+                typeof rawRegion === 'string' ? rawRegion : 'Region';
+              popup
+                .setLngLat(lngLat)
+                .setDOMContent(
+                  regionPopupContent(region, summaries.get(region)),
+                )
+                .addTo(map);
+            };
             map.on('mousemove', 'psip-regions-fill', (event) => {
               const feature = event.features?.[0] as RegionFeature | undefined;
               if (!feature) return;
@@ -352,16 +373,12 @@ export default function PsipMap({
                   { source: 'psip-regions', id: hoveredId },
                   { hover: true },
                 );
-              const rawRegion = feature.properties?.region;
-              const region =
-                typeof rawRegion === 'string' ? rawRegion : 'Region';
               map.getCanvas().style.cursor = 'pointer';
-              popup
-                .setLngLat(event.lngLat)
-                .setDOMContent(
-                  regionPopupContent(region, summaries.get(region)),
-                )
-                .addTo(map);
+              showRegionPopup(feature, event.lngLat);
+            });
+            map.on('click', 'psip-regions-fill', (event) => {
+              const feature = event.features?.[0] as RegionFeature | undefined;
+              if (feature) showRegionPopup(feature, event.lngLat);
             });
             map.on('mouseleave', 'psip-regions-fill', () => {
               if (hoveredId !== undefined)
@@ -378,14 +395,19 @@ export default function PsipMap({
               console.error('Regional boundaries failed to render', error);
           }
         }
-        if (!bounds.isEmpty())
-          map.fitBounds(bounds, { padding: 48, maxZoom: 7, duration: 0 });
+        if (!bounds.isEmpty()) {
+          const width = host.current?.clientWidth || window.innerWidth;
+          const padding = width < 640 ? 20 : width < 1024 ? 32 : 48;
+          map.fitBounds(bounds, { padding, maxZoom: 7, duration: 0 });
+        }
         requestAnimationFrame(() => map.resize());
       });
       map.on('error', (event) =>
         console.error('Mapbox failed to render', event.error),
       );
       cleanup = () => {
+        resizeObserver.disconnect();
+        window.visualViewport?.removeEventListener('resize', resizeMap);
         reactRoots.forEach((root) => root.unmount());
         markers.forEach((marker) => marker.remove());
         map.remove();
