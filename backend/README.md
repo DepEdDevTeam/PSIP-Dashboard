@@ -24,3 +24,8 @@ Useful endpoints:
 `main.py` is the server entry point. `test_graphql.py` is only an optional
 command-line connection test. `test_db.py` is the older ODBC diagnostic and is
 not used by the dashboard.
+
+The first Fabric load fetches independent entities concurrently. Successful
+datasets stay in memory for 30 minutes by default; restart the backend to clear
+the cache. Configure this with `FABRIC_FETCH_WORKERS` and
+`FABRIC_CACHE_SECONDS` in `.env`.

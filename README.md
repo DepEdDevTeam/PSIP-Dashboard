@@ -24,21 +24,24 @@ backend and are never sent to the browser.
 4. In `site`, install packages and start the dashboard:
 
    ```powershell
-   npm install
-   npm run dev
+   bun install --frozen-lockfile
+   bun run dev
    ```
 
 The first data request opens Microsoft sign-in. The signed-in account needs
 Fabric GraphQL “Run Queries and Mutations” permission and access to the backing
-data source.
+data source. After the first successful sign-in, the backend reuses the
+encrypted Windows token cache and does not open another authentication tab on
+every request or restart. The localhost callback tab can be closed after it
+shows “Authentication complete.”
 
 ## Checks
 
 ```powershell
 F:\Projects\PSIP-Dashboard\backend\.venv\Scripts\python.exe -m unittest -v test_fabric_service.py
 cd site
-npm run lint
-npm run build
+bun run lint
+bun run build
 ```
 
 For hosted use, deploy FastAPI separately, use managed identity or a service

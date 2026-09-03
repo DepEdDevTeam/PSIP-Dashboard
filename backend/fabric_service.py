@@ -8,16 +8,25 @@ import os
 import threading
 import time
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterable, Literal, Protocol
 
 import requests
 from azure.core.credentials import AccessToken
-from azure.identity import DefaultAzureCredential, InteractiveBrowserCredential
+from azure.identity import (
+    AuthenticationRecord,
+    DefaultAzureCredential,
+    InteractiveBrowserCredential,
+    TokenCachePersistenceOptions,
+)
 from pydantic import BaseModel, Field
 
 LOGGER = logging.getLogger(__name__)
 FABRIC_SCOPE = "https://analysis.windows.net/powerbi/api/.default"
+DEFAULT_TOKEN_CACHE_NAME = "psip-fabric-auth"
 
 
 class FabricServiceError(RuntimeError):
@@ -34,6 +43,63 @@ class FabricAuthenticationError(FabricServiceError):
 
 class FabricGraphQLError(FabricServiceError):
     """Raised when Fabric rejects or cannot complete a GraphQL query."""
+
+
+def _authentication_record_path() -> Path:
+    configured_path = os.getenv("FABRIC_AUTH_RECORD_PATH")
+    if configured_path:
+        return Path(configured_path).expanduser().resolve()
+
+    app_data = os.getenv("LOCALAPPDATA")
+    base_directory = Path(app_data) if app_data else Path.home() / ".psip-dashboard"
+    return base_directory / "PSIP-Dashboard" / "fabric-auth-record.json"
+
+
+def _interactive_browser_credential() -> InteractiveBrowserCredential:
+    """Create one interactive credential backed by the Windows token cache."""
+
+    record_path = _authentication_record_path()
+    cache_options = TokenCachePersistenceOptions(
+        name=os.getenv("FABRIC_TOKEN_CACHE_NAME", DEFAULT_TOKEN_CACHE_NAME)
+    )
+    credential_options: dict[str, Any] = {
+        "cache_persistence_options": cache_options,
+    }
+    tenant_id = os.getenv("AZURE_TENANT_ID")
+    if tenant_id:
+        credential_options["tenant_id"] = tenant_id
+
+    if record_path.is_file():
+        try:
+            record = AuthenticationRecord.deserialize(
+                record_path.read_text(encoding="utf-8")
+            )
+            LOGGER.info("Using the saved Microsoft authentication record.")
+            return InteractiveBrowserCredential(
+                authentication_record=record,
+                **credential_options,
+            )
+        except (OSError, ValueError):
+            LOGGER.warning(
+                "The saved Microsoft authentication record is invalid; "
+                "a new sign-in is required."
+            )
+
+    credential = InteractiveBrowserCredential(**credential_options)
+    try:
+        record = credential.authenticate(scopes=(FABRIC_SCOPE,))
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = record_path.with_suffix(".tmp")
+        temporary_path.write_text(record.serialize(), encoding="utf-8")
+        temporary_path.replace(record_path)
+    except Exception as exc:
+        raise FabricAuthenticationError(
+            "Unable to complete Microsoft Fabric sign-in. Close old callback tabs "
+            "and retry once from the dashboard."
+        ) from exc
+
+    LOGGER.info("Microsoft authentication completed and was saved for reuse.")
+    return credential
 
 
 class TokenCredential(Protocol):
@@ -156,6 +222,13 @@ class SchoolResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+@dataclass(frozen=True)
+class ServiceTiming:
+    cache_status: Literal["hit", "miss"]
+    fabric_ms: float
+    normalization_ms: float
+
+
 ENTITY_FIELDS: dict[str, tuple[str, ...]] = {
     "pSIP_Curateds": (
         "PSIPRefNo", "NoOfSites", "NoAcademicClassrooms", "NoWorkshopEq2CL",
@@ -219,7 +292,9 @@ class FabricGraphQLClient:
         self.timeout_seconds = timeout_seconds
         self.page_size = page_size
         self.max_records = max_records
-        self.session = session or requests.Session()
+        # Injected sessions are retained for deterministic tests. Production fetches
+        # create one session per entity so pagination can run safely in parallel.
+        self.session = session
 
     def fetch_entity(self, entity: str, fields: Iterable[str]) -> list[dict[str, Any]]:
         field_selection = "\n          ".join(fields)
@@ -236,30 +311,46 @@ query Fetch{entity}($first: Int!, $after: String) {{
 """.strip()
         rows: list[dict[str, Any]] = []
         after: str | None = None
-
-        while True:
-            payload = self._execute(query, {"first": self.page_size, "after": after})
-            connection = payload.get(entity)
-            if not isinstance(connection, dict):
-                raise FabricGraphQLError(f"Fabric response did not contain '{entity}'.")
-            items = connection.get("items") or []
-            if not isinstance(items, list):
-                raise FabricGraphQLError(f"Fabric returned invalid items for '{entity}'.")
-            rows.extend(item for item in items if isinstance(item, dict))
-            if len(rows) > self.max_records:
-                raise FabricGraphQLError(
-                    f"'{entity}' exceeded the configured {self.max_records:,}-record limit."
-                )
-            if not connection.get("hasNextPage"):
-                return rows
-            next_cursor = connection.get("endCursor")
-            if not next_cursor or next_cursor == after:
-                raise FabricGraphQLError(f"Fabric returned an invalid cursor for '{entity}'.")
-            after = str(next_cursor)
-
-    def _execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        request_session = self.session or requests.Session()
+        owns_session = self.session is None
         try:
-            response = self.session.post(
+            while True:
+                payload = self._execute(
+                    query,
+                    {"first": self.page_size, "after": after},
+                    request_session,
+                )
+                connection = payload.get(entity)
+                if not isinstance(connection, dict):
+                    raise FabricGraphQLError(f"Fabric response did not contain '{entity}'.")
+                items = connection.get("items") or []
+                if not isinstance(items, list):
+                    raise FabricGraphQLError(f"Fabric returned invalid items for '{entity}'.")
+                rows.extend(item for item in items if isinstance(item, dict))
+                if len(rows) > self.max_records:
+                    raise FabricGraphQLError(
+                        f"'{entity}' exceeded the configured {self.max_records:,}-record limit."
+                    )
+                if not connection.get("hasNextPage"):
+                    return rows
+                next_cursor = connection.get("endCursor")
+                if not next_cursor or next_cursor == after:
+                    raise FabricGraphQLError(
+                        f"Fabric returned an invalid cursor for '{entity}'."
+                    )
+                after = str(next_cursor)
+        finally:
+            if owns_session:
+                request_session.close()
+
+    def _execute(
+        self,
+        query: str,
+        variables: dict[str, Any],
+        request_session: requests.Session,
+    ) -> dict[str, Any]:
+        try:
+            response = request_session.post(
                 self.endpoint,
                 headers={
                     "Authorization": f"Bearer {self.token_provider.get_token()}",
@@ -292,9 +383,15 @@ query Fetch{entity}($first: Int!, $after: String) {{
 
 
 class FabricPsipService:
-    def __init__(self, client: FabricGraphQLClient, cache_seconds: int = 300) -> None:
+    def __init__(
+        self,
+        client: FabricGraphQLClient,
+        cache_seconds: int = 1800,
+        fetch_workers: int = 4,
+    ) -> None:
         self.client = client
         self.cache_seconds = cache_seconds
+        self.fetch_workers = max(1, min(fetch_workers, len(ENTITY_FIELDS)))
         self._dataset_cache: tuple[float, dict[str, list[dict[str, Any]]]] | None = None
         self._cache_lock = threading.Lock()
 
@@ -310,7 +407,7 @@ class FabricPsipService:
         if auth_mode == "default":
             credential = DefaultAzureCredential()
         elif auth_mode == "interactive":
-            credential = InteractiveBrowserCredential()
+            credential = _interactive_browser_credential()
         else:
             raise FabricConfigurationError(
                 "FABRIC_AUTH_MODE must be either 'interactive' or 'default'."
@@ -322,7 +419,11 @@ class FabricPsipService:
             page_size=int(os.getenv("FABRIC_PAGE_SIZE", "500")),
             max_records=int(os.getenv("FABRIC_MAX_RECORDS", "100000")),
         )
-        return cls(client, cache_seconds=int(os.getenv("FABRIC_CACHE_SECONDS", "300")))
+        return cls(
+            client,
+            cache_seconds=int(os.getenv("FABRIC_CACHE_SECONDS", "1800")),
+            fetch_workers=int(os.getenv("FABRIC_FETCH_WORKERS", "4")),
+        )
 
     def get_dashboard(
         self,
@@ -333,47 +434,128 @@ class FabricPsipService:
         scope: str | None = None,
         search: str | None = None,
     ) -> DashboardResponse:
-        all_records = self._normalize(self._load_dataset())
+        dashboard, _ = self.get_dashboard_with_timing(
+            region, division, building, readiness, scope, search
+        )
+        return dashboard
+
+    def get_dashboard_with_timing(
+        self,
+        region: str | None = None,
+        division: str | None = None,
+        building: str | None = None,
+        readiness: str | None = None,
+        scope: str | None = None,
+        search: str | None = None,
+    ) -> tuple[DashboardResponse, ServiceTiming]:
+        dataset, cache_status, fabric_ms = self._load_dataset_with_timing()
+        normalize_started = time.perf_counter()
+        all_records = self._normalize(dataset)
         options = self._build_options(all_records)
         records = [
             record
             for record in all_records
             if self._matches(record, region, division, building, readiness, scope, search)
         ]
-        return self._build_dashboard(records, options)
+        dashboard = self._build_dashboard(records, options)
+        normalization_ms = (time.perf_counter() - normalize_started) * 1000
+        LOGGER.info(
+            "Dashboard ready cache=%s fabric_ms=%.1f normalization_ms=%.1f records=%d",
+            cache_status,
+            fabric_ms,
+            normalization_ms,
+            len(records),
+        )
+        return dashboard, ServiceTiming(cache_status, fabric_ms, normalization_ms)
 
     def get_options(self) -> FilterOptions:
-        return self._build_options(self._normalize(self._load_dataset()))
+        options, _ = self.get_options_with_timing()
+        return options
+
+    def get_options_with_timing(self) -> tuple[FilterOptions, ServiceTiming]:
+        dataset, cache_status, fabric_ms = self._load_dataset_with_timing()
+        normalize_started = time.perf_counter()
+        options = self._build_options(self._normalize(dataset))
+        normalization_ms = (time.perf_counter() - normalize_started) * 1000
+        return options, ServiceTiming(cache_status, fabric_ms, normalization_ms)
 
     def get_school(self, school_id: str) -> SchoolResponse | None:
+        school, _ = self.get_school_with_timing(school_id)
+        return school
+
+    def get_school_with_timing(
+        self, school_id: str
+    ) -> tuple[SchoolResponse | None, ServiceTiming]:
+        dataset, cache_status, fabric_ms = self._load_dataset_with_timing()
+        normalize_started = time.perf_counter()
         matches = [
             record
-            for record in self._normalize(self._load_dataset())
+            for record in self._normalize(dataset)
             if record.school_id.casefold() == school_id.casefold()
         ]
+        normalization_ms = (time.perf_counter() - normalize_started) * 1000
+        timing = ServiceTiming(cache_status, fabric_ms, normalization_ms)
         if not matches:
-            return None
+            return None, timing
         matches.sort(key=lambda row: row.effective_start_date or "", reverse=True)
-        return SchoolResponse(
-            schoolId=matches[0].school_id,
-            schoolName=matches[0].school_name,
-            records=matches,
+        return (
+            SchoolResponse(
+                schoolId=matches[0].school_id,
+                schoolName=matches[0].school_name,
+                records=matches,
+            ),
+            timing,
         )
 
     def get_buildings(self) -> list[dict[str, Any]]:
         return self._load_dataset().get("dimBuildings", [])
 
     def _load_dataset(self) -> dict[str, list[dict[str, Any]]]:
+        dataset, _, _ = self._load_dataset_with_timing()
+        return dataset
+
+    def _load_dataset_with_timing(
+        self,
+    ) -> tuple[dict[str, list[dict[str, Any]]], Literal["hit", "miss"], float]:
         now = time.monotonic()
         with self._cache_lock:
             if self._dataset_cache and self._dataset_cache[0] > now:
-                return self._dataset_cache[1]
+                LOGGER.info("Fabric dataset cache hit")
+                return self._dataset_cache[1], "hit", 0.0
+            started = time.perf_counter()
             dataset: dict[str, list[dict[str, Any]]] = {}
-            for entity, fields in ENTITY_FIELDS.items():
-                LOGGER.info("Fetching Fabric entity %s", entity)
-                dataset[entity] = self.client.fetch_entity(entity, fields)
+
+            def fetch(entity: str, fields: tuple[str, ...]) -> tuple[str, list[dict[str, Any]]]:
+                entity_started = time.perf_counter()
+                rows = self.client.fetch_entity(entity, fields)
+                LOGGER.info(
+                    "Fetched Fabric entity %s rows=%d duration_ms=%.1f",
+                    entity,
+                    len(rows),
+                    (time.perf_counter() - entity_started) * 1000,
+                )
+                return entity, rows
+
+            with ThreadPoolExecutor(
+                max_workers=self.fetch_workers,
+                thread_name_prefix="fabric-fetch",
+            ) as executor:
+                futures = {
+                    executor.submit(fetch, entity, fields): entity
+                    for entity, fields in ENTITY_FIELDS.items()
+                }
+                for future in as_completed(futures):
+                    entity, rows = future.result()
+                    dataset[entity] = rows
+
+            fabric_ms = (time.perf_counter() - started) * 1000
+            LOGGER.info(
+                "Fabric dataset cache miss completed entities=%d duration_ms=%.1f",
+                len(dataset),
+                fabric_ms,
+            )
             self._dataset_cache = (now + self.cache_seconds, dataset)
-            return dataset
+            return dataset, "miss", fabric_ms
 
     def _normalize(self, dataset: dict[str, list[dict[str, Any]]]) -> list[PsipRecord]:
         school_rows = dataset.get("dimSchoolPSIPs", [])
