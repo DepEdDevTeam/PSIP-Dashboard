@@ -44,9 +44,13 @@ export default function SchoolPage() {
     void fetchSchool(schoolId, controller.signal)
       .then((response) => {
         setData(response);
-        const requestedRecord = new URLSearchParams(window.location.search).get('record');
+        const requestedRecord = new URLSearchParams(window.location.search).get(
+          'record',
+        );
         setSelected(
-          response.records.find((record) => record.recordId === requestedRecord) ||
+          response.records.find(
+            (record) => record.recordId === requestedRecord,
+          ) ||
             response.records.find((record) => record.isCurrent === true) ||
             response.records[0] ||
             null,
@@ -70,7 +74,11 @@ export default function SchoolPage() {
     setSelected(record);
     const query = new URLSearchParams(window.location.search);
     query.set('record', record.recordId);
-    window.history.replaceState(null, '', `${window.location.pathname}?${query.toString()}`);
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}?${query.toString()}`,
+    );
   };
 
   return (
@@ -87,10 +95,18 @@ export default function SchoolPage() {
         {loading ? (
           <SchoolSkeleton />
         ) : error ? (
-          <section className="grid min-h-96 place-items-center rounded-2xl border border-red-200 bg-red-50 p-8 text-center" role="alert">
+          <section
+            className="grid min-h-96 place-items-center rounded-2xl border border-red-200 bg-red-50 p-8 text-center"
+            role="alert"
+          >
             <div>
-              <AlertTriangle className="mx-auto size-10 text-red-700" aria-hidden="true" />
-              <h1 className="mt-4 text-2xl font-bold text-red-950">School data is unavailable</h1>
+              <AlertTriangle
+                className="mx-auto size-10 text-red-700"
+                aria-hidden="true"
+              />
+              <h1 className="mt-4 text-2xl font-bold text-red-950">
+                School data is unavailable
+              </h1>
               <p className="mt-2 max-w-xl text-sm text-red-800">{error}</p>
               <button
                 onClick={() => {
@@ -106,7 +122,11 @@ export default function SchoolPage() {
             </div>
           </section>
         ) : data && selected ? (
-          <SchoolRecord data={data} selected={selected} onSelect={chooseRecord} />
+          <SchoolRecord
+            data={data}
+            selected={selected}
+            onSelect={chooseRecord}
+          />
         ) : null}
       </div>
     </main>
@@ -122,14 +142,18 @@ function SchoolRecord({
   selected: PsipRecord;
   onSelect: (record: PsipRecord) => void;
 }) {
-  const facilityTotal = Object.values(selected.facilities).reduce((sum, value) => sum + value, 0);
+  const facilityTotal = Object.values(selected.facilities).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
   return (
     <>
       <section className="overflow-hidden rounded-3xl bg-[#0b245f] text-white shadow-[0_18px_45px_rgba(11,36,95,.18)]">
         <div className="grid gap-8 p-6 md:grid-cols-[1fr_auto] md:p-9">
           <div>
             <p className="text-xs font-bold uppercase tracking-[.15em] text-blue-200">
-              School {selected.schoolId} · Project {selected.projectId || 'not recorded'}
+              School {selected.schoolId} · Project{' '}
+              {selected.projectId || 'not recorded'}
             </p>
             <h1 className="mt-3 text-3xl font-bold tracking-[-.04em] md:text-5xl">
               {data.schoolName}
@@ -146,7 +170,9 @@ function SchoolRecord({
             <div className="mt-3">
               <Status value={selected.readiness} />
             </div>
-            <p className="mt-5 text-sm font-bold">{versionLabel(selected.isCurrent)}</p>
+            <p className="mt-5 text-sm font-bold">
+              {versionLabel(selected.isCurrent)}
+            </p>
             <p className="mt-1 text-xs text-blue-200">
               Effective {formatDate(selected.effectiveStartDate)}
             </p>
@@ -155,15 +181,33 @@ function SchoolRecord({
       </section>
 
       <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric icon={GraduationCap} label="Classrooms" value={selected.classrooms} />
-        <Metric icon={Building2} label="Building profile" value={selected.buildingType || 'Unknown'} />
-        <Metric icon={FlaskConical} label="Classified spaces" value={facilityTotal} />
-        <Metric icon={History} label="School history" value={`${data.records.length} versions`} />
+        <Metric
+          icon={GraduationCap}
+          label="Classrooms"
+          value={selected.classrooms}
+        />
+        <Metric
+          icon={Building2}
+          label="Building profile"
+          value={selected.buildingType || 'Unknown'}
+        />
+        <Metric
+          icon={FlaskConical}
+          label="Classified spaces"
+          value={facilityTotal}
+        />
+        <Metric
+          icon={History}
+          label="School history"
+          value={`${data.records.length} versions`}
+        />
       </section>
 
       <section className="mt-5 grid gap-5 lg:grid-cols-[.38fr_.62fr]">
         <article className="rounded-2xl border bg-white p-5 shadow-[0_8px_24px_rgba(21,48,93,.05)]">
-          <p className="text-xs font-bold uppercase tracking-[.13em] text-[#2366dc]">Version history</p>
+          <p className="text-xs font-bold uppercase tracking-[.13em] text-[#2366dc]">
+            Version history
+          </p>
           <h2 className="mt-1 text-xl font-bold">Effective records</h2>
           <p className="mt-1 text-xs leading-5 text-[#647089]">
             Choose a historical version to inspect its project facts.
@@ -181,11 +225,14 @@ function SchoolRecord({
                 }`}
               >
                 <span className="flex items-center justify-between gap-2">
-                  <b className="text-sm">{formatDate(record.effectiveStartDate)}</b>
+                  <b className="text-sm">
+                    {formatDate(record.effectiveStartDate)}
+                  </b>
                   <VersionBadge value={record.isCurrent} />
                 </span>
                 <span className="mt-1 block text-xs text-[#647089]">
-                  {record.projectId || 'No project reference'} · {record.classrooms} rooms
+                  {record.projectId || 'No project reference'} ·{' '}
+                  {record.classrooms} rooms
                 </span>
               </button>
             ))}
@@ -195,8 +242,12 @@ function SchoolRecord({
         <article className="rounded-2xl border bg-white p-6 shadow-[0_8px_24px_rgba(21,48,93,.05)]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[.13em] text-[#2366dc]">Selected version</p>
-              <h2 className="mt-1 text-xl font-bold">Classroom and facility plan</h2>
+              <p className="text-xs font-bold uppercase tracking-[.13em] text-[#2366dc]">
+                Selected version
+              </p>
+              <h2 className="mt-1 text-xl font-bold">
+                Classroom and facility plan
+              </h2>
             </div>
             <div className="text-right text-xs text-[#647089]">
               <p>{formatDate(selected.effectiveStartDate)}</p>
@@ -205,7 +256,10 @@ function SchoolRecord({
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             {Object.entries(selected.facilities).map(([key, value]) => (
-              <div key={key} className="flex items-center justify-between rounded-xl bg-[#f4f7fb] p-4">
+              <div
+                key={key}
+                className="flex items-center justify-between rounded-xl bg-[#f4f7fb] p-4"
+              >
                 <span className="text-sm capitalize text-[#526079]">
                   {key.replace(/([A-Z])/g, ' $1')}
                 </span>
@@ -214,9 +268,12 @@ function SchoolRecord({
             ))}
           </div>
           <div className="mt-5 rounded-xl border border-dashed p-4">
-            <p className="text-sm font-bold">Completion percentage unavailable</p>
+            <p className="text-sm font-bold">
+              Completion percentage unavailable
+            </p>
             <p className="mt-1 text-xs leading-5 text-[#647089]">
-              The Fabric query does not expose an official completion field, so this dashboard does not estimate one.
+              The Fabric query does not expose an official completion field, so
+              this dashboard does not estimate one.
             </p>
           </div>
         </article>
@@ -224,7 +281,9 @@ function SchoolRecord({
 
       <section className="mt-5 grid gap-5 lg:grid-cols-2">
         <article className="rounded-2xl border bg-white p-6 shadow-[0_8px_24px_rgba(21,48,93,.05)]">
-          <p className="text-xs font-bold uppercase tracking-[.13em] text-[#2366dc]">Scope and readiness</p>
+          <p className="text-xs font-bold uppercase tracking-[.13em] text-[#2366dc]">
+            Scope and readiness
+          </p>
           <h2 className="mt-1 text-xl font-bold">Site work requirements</h2>
           <div className="mt-5 space-y-3">
             <Scope label="Site improvement" active={selected.siteImprovement} />
@@ -233,7 +292,9 @@ function SchoolRecord({
           </div>
         </article>
         <article className="rounded-2xl border bg-white p-6 shadow-[0_8px_24px_rgba(21,48,93,.05)]">
-          <p className="text-xs font-bold uppercase tracking-[.13em] text-[#2366dc]">Record context</p>
+          <p className="text-xs font-bold uppercase tracking-[.13em] text-[#2366dc]">
+            Record context
+          </p>
           <h2 className="mt-1 text-xl font-bold">Location and identifiers</h2>
           <dl className="mt-5 grid gap-4 sm:grid-cols-2">
             <Info title="Region" value={selected.region} />
@@ -259,7 +320,7 @@ function Header() {
             <span className="block text-[10px] font-bold uppercase tracking-[.14em] text-[#61708a]">
               Department of Education
             </span>
-            <span className="block font-bold">PSIP Monitor</span>
+            <span className="block font-bold">PPP Dashboard</span>
           </span>
         </Link>
         <p className="text-xs text-[#61708a]">School history</p>
@@ -268,14 +329,24 @@ function Header() {
   );
 }
 
-function Metric({ icon: Icon, label, value }: { icon: typeof Building2; label: string; value: string | number }) {
+function Metric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Building2;
+  label: string;
+  value: string | number;
+}) {
   return (
     <article className="min-w-0 rounded-2xl border bg-white p-5 shadow-[0_8px_24px_rgba(21,48,93,.05)]">
       <span className="grid size-9 place-items-center rounded-xl bg-[#eaf0fb] text-[#1854bd]">
         <Icon aria-hidden="true" className="size-4" />
       </span>
       <p className="mt-5 text-xs font-semibold text-[#647089]">{label}</p>
-      <p className="mt-1 break-words text-xl font-bold">{typeof value === 'number' ? number.format(value) : value}</p>
+      <p className="mt-1 break-words text-xl font-bold">
+        {typeof value === 'number' ? number.format(value) : value}
+      </p>
     </article>
   );
 }
@@ -287,9 +358,19 @@ function Status({ value }: { value: ReadinessStatus }) {
     Pending: '#f1b84b',
     Unknown: '#cbd5e1',
   };
-  const Icon = value === 'Ready' ? CheckCircle2 : value === 'At risk' ? ShieldAlert : value === 'Pending' ? Clock3 : AlertTriangle;
+  const Icon =
+    value === 'Ready'
+      ? CheckCircle2
+      : value === 'At risk'
+        ? ShieldAlert
+        : value === 'Pending'
+          ? Clock3
+          : AlertTriangle;
   return (
-    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-bold" style={{ background: `${colors[value]}20`, color: colors[value] }}>
+    <span
+      className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-bold"
+      style={{ background: `${colors[value]}20`, color: colors[value] }}
+    >
       <Icon aria-hidden="true" className="size-4" />
       {value}
     </span>
@@ -298,22 +379,34 @@ function Status({ value }: { value: ReadinessStatus }) {
 
 function VersionBadge({ value }: { value: boolean | null }) {
   return (
-    <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${value === true ? 'bg-[#ddf7ec] text-[#087a54]' : value === false ? 'bg-[#eef1f5] text-[#526079]' : 'bg-amber-50 text-amber-800'}`}>
+    <span
+      className={`rounded-full px-2 py-1 text-[10px] font-bold ${value === true ? 'bg-[#ddf7ec] text-[#087a54]' : value === false ? 'bg-[#eef1f5] text-[#526079]' : 'bg-amber-50 text-amber-800'}`}
+    >
       {versionLabel(value)}
     </span>
   );
 }
 
 function versionLabel(value: boolean | null) {
-  return value === true ? 'Current' : value === false ? 'Historical' : 'Unmarked';
+  return value === true
+    ? 'Current'
+    : value === false
+      ? 'Historical'
+      : 'Unmarked';
 }
 
 function Scope({ label, active }: { label: string; active: boolean }) {
   return (
     <div className="flex items-center justify-between rounded-xl border px-4 py-3 text-sm">
       <span>{label}</span>
-      <span className={`grid size-7 place-items-center rounded-full ${active ? 'bg-[#ddf7ec] text-[#087a54]' : 'bg-[#f0f2f6] text-[#8490a3]'}`}>
-        {active ? <Check aria-label="Included" className="size-4" /> : <X aria-label="Not included" className="size-4" />}
+      <span
+        className={`grid size-7 place-items-center rounded-full ${active ? 'bg-[#ddf7ec] text-[#087a54]' : 'bg-[#f0f2f6] text-[#8490a3]'}`}
+      >
+        {active ? (
+          <Check aria-label="Included" className="size-4" />
+        ) : (
+          <X aria-label="Not included" className="size-4" />
+        )}
       </span>
     </div>
   );
@@ -322,7 +415,9 @@ function Scope({ label, active }: { label: string; active: boolean }) {
 function Info({ title, value }: { title: string; value: string }) {
   return (
     <div className="min-w-0 rounded-xl bg-[#f4f7fb] p-4">
-      <dt className="text-xs font-bold uppercase tracking-wider text-[#647089]">{title}</dt>
+      <dt className="text-xs font-bold uppercase tracking-wider text-[#647089]">
+        {title}
+      </dt>
       <dd className="mt-2 break-words font-bold">{value}</dd>
     </div>
   );
@@ -333,7 +428,9 @@ function SchoolSkeleton() {
     <output className="block space-y-5" aria-label="Loading school history">
       <Skeleton className="h-64 rounded-3xl" />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-36 rounded-2xl" />)}
+        {Array.from({ length: 4 }, (_, index) => (
+          <Skeleton key={index} className="h-36 rounded-2xl" />
+        ))}
       </div>
       <Skeleton className="h-96 rounded-2xl" />
       <span className="sr-only">Loading school history</span>

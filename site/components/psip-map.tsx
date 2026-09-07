@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
+import { SchoolMapTooltip } from '@/components/school-map-tooltip';
 import type { ReadinessStatus, SchoolProject } from '@/lib/psip-data';
 
 const statusColors: Record<ReadinessStatus, string> = {
@@ -10,7 +13,9 @@ const statusColors: Record<ReadinessStatus, string> = {
   Unknown: '#64748b',
 };
 const buildingColors = ['#1e5fc4', '#10a779', '#d89a12', '#7c3aed'];
-const REGIONAL_VIEW = 'Regional Map View';
+const REGIONAL_VIEW = 'Regional View';
+const REGIONAL_CLUSTER_ZOOM = 7.5;
+const HEATMAP_VIEW = 'At-risk Heatmap';
 const regionColors: Record<string, string> = {
   'Region I': '#d7193f',
   'Region II': '#f58231',
@@ -176,24 +181,6 @@ function regionPopupContent(region: string, summary?: RegionSummary) {
   return root;
 }
 
-function projectPopupContent(project: SchoolProject) {
-  const root = document.createElement('div');
-  const title = document.createElement('strong');
-  title.textContent = project.name;
-  title.style.cssText = 'display:block;color:#102044;font-size:14px';
-  const location = document.createElement('p');
-  location.textContent = `${project.division} · ${project.region}`;
-  location.style.cssText = 'margin:5px 0 0;color:#526079;font-size:11px';
-  const detail = document.createElement('p');
-  detail.textContent = `${project.classrooms} classrooms · ${project.readiness}`;
-  detail.style.cssText =
-    'margin:5px 0 0;color:#102044;font-size:12px;font-weight:700';
-  root.appendChild(title);
-  root.appendChild(location);
-  root.appendChild(detail);
-  return root;
-}
-
 function extendGeometryBounds(
   bounds: { extend: (point: [number, number]) => unknown },
   coordinates: unknown,
@@ -212,21 +199,18 @@ function extendGeometryBounds(
 
 export default function PsipMap({
   projects,
-  onSelect,
+  searchKind,
+  allProjects,
   view = REGIONAL_VIEW,
 }: {
   projects: SchoolProject[];
-  onSelect: (project: SchoolProject) => void;
+  searchKind?: string;
+  allProjects: SchoolProject[];
   view?: string;
 }) {
   const host = useRef<HTMLDivElement>(null);
-  const selectRef = useRef(onSelect);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    selectRef.current = onSelect;
-  }, [onSelect]);
 
   useEffect(() => {
     const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
@@ -253,9 +237,129 @@ export default function PsipMap({
           });
           map.addControl(
             new mapboxgl.NavigationControl({ showCompass: false }),
-            'top-right',
+            'bottom-right',
           );
           const bounds = new mapboxgl.LngLatBounds();
+          const popupHost = document.createElement('div');
+          const popupRoot = createRoot(popupHost);
+          let pinned = false;
+          let hideTimer: ReturnType<typeof setTimeout> | undefined;
+          let schoolPopup = new mapboxgl.Popup({
+            closeButton: false,
+            closeOnClick: false,
+            maxWidth: '480px',
+            offset: 14,
+            className: 'school-summary-popup',
+          });
+          const closeSchoolPopup = () => {
+            pinned = false;
+            schoolPopup.remove();
+          };
+          const showSchool = (project: SchoolProject, pin: boolean) => {
+            if (pinned && !pin) return;
+            if (!Number.isFinite(project.lng) || !Number.isFinite(project.lat))
+              return;
+            clearTimeout(hideTimer);
+            pinned = pin;
+            const rows = allProjects.filter((row) => row.id === project.id);
+            flushSync(() =>
+              popupRoot.render(
+                <SchoolMapTooltip
+                  rows={rows.length ? rows : [project]}
+                  pinned={pinned}
+                  onClose={closeSchoolPopup}
+                />,
+              ),
+            );
+            const point = map.project([project.lng!, project.lat!]);
+            const mapHeight = map.getContainer().clientHeight;
+            const mapWidth = map.getContainer().clientWidth;
+            const above = point.y - 220;
+            const below = mapHeight - point.y - 24;
+            const vertical = above >= below ? 'bottom' : 'top';
+            const horizontal =
+              point.x < 250
+                ? '-left'
+                : point.x > mapWidth - 250
+                  ? '-right'
+                  : '';
+            const body =
+              popupHost.querySelector<HTMLElement>('.school-map-body');
+            const besidePin = Math.max(point.x, mapWidth - point.x) >= 510;
+            if (body)
+              body.style.maxHeight = `${Math.max(150, Math.min(760, besidePin ? mapHeight - 320 : Math.max(above, below) - 76))}px`;
+            schoolPopup.remove();
+            schoolPopup = new mapboxgl.Popup({
+              closeButton: false,
+              closeOnClick: false,
+              maxWidth: '480px',
+              offset: 14,
+              className: 'school-summary-popup',
+              anchor: besidePin
+                ? point.x < mapWidth / 2
+                  ? 'left'
+                  : 'right'
+                : (`${vertical}${horizontal}` as
+                    | 'top'
+                    | 'bottom'
+                    | 'top-left'
+                    | 'top-right'
+                    | 'bottom-left'
+                    | 'bottom-right'),
+            });
+            schoolPopup
+              .setLngLat([project.lng!, project.lat!])
+              .setDOMContent(popupHost)
+              .addTo(map);
+            if (besidePin) {
+              const cardHeight = popupHost.getBoundingClientRect().height;
+              const centerY = Math.max(
+                220 + cardHeight / 2,
+                Math.min(point.y, mapHeight - 24 - cardHeight / 2),
+              );
+              schoolPopup.setOffset([
+                point.x < mapWidth / 2 ? 14 : -14,
+                centerY - point.y,
+              ]);
+            }
+          };
+          const hideSchool = () => {
+            if (!pinned)
+              hideTimer = setTimeout(() => {
+                if (!pinned) schoolPopup.remove();
+              }, 200);
+          };
+          popupHost.addEventListener('mouseenter', () =>
+            clearTimeout(hideTimer),
+          );
+          popupHost.addEventListener('mouseleave', hideSchool);
+          popupHost.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') closeSchoolPopup();
+          });
+          const bindSchoolInteraction = (
+            layerId: string,
+            property = 'projectIndex',
+          ) => {
+            const getProject = (event: { features?: unknown[] }) => {
+              const feature = event.features?.[0] as
+                | MapPointFeature
+                | undefined;
+              return projects[Number(feature?.properties?.[property])];
+            };
+            map.on('mouseenter', layerId, (event) => {
+              map.getCanvas().style.cursor = 'pointer';
+              const project = getProject(event);
+              if (project) showSchool(project, false);
+            });
+            map.on('mouseleave', layerId, () => {
+              map.getCanvas().style.cursor = '';
+              hideSchool();
+            });
+            map.on('click', layerId, (event) => {
+              const project = getProject(event);
+              if (project) showSchool(project, true);
+            });
+          };
 
           map.once('load', async () => {
             if (disposed) return;
@@ -296,6 +400,7 @@ export default function PsipMap({
                 });
                 map.addLayer({
                   id: 'psip-regions-fill',
+                  maxzoom: REGIONAL_CLUSTER_ZOOM,
                   type: 'fill',
                   source: 'psip-regions',
                   paint: {
@@ -319,6 +424,7 @@ export default function PsipMap({
                 });
                 map.addLayer({
                   id: 'psip-regions-outline',
+                  maxzoom: REGIONAL_CLUSTER_ZOOM,
                   type: 'line',
                   source: 'psip-regions',
                   paint: {
@@ -332,6 +438,10 @@ export default function PsipMap({
                   closeOnClick: false,
                   maxWidth: '290px',
                   offset: 12,
+                });
+                map.on('zoom', () => {
+                  if (map.getZoom() >= REGIONAL_CLUSTER_ZOOM) popup.remove();
+                  else closeSchoolPopup();
                 });
                 let hoveredId: string | number | undefined;
                 map.on('mousemove', 'psip-regions-fill', (event) => {
@@ -375,6 +485,7 @@ export default function PsipMap({
                 const buildingTypes = Array.from(
                   new Set(projects.map((project) => project.buildingType)),
                 );
+                const visibleSchools = new Set<string>();
                 const points: ProjectPointCollection = {
                   type: 'FeatureCollection',
                   features: projects.flatMap((project, projectIndex) => {
@@ -384,12 +495,15 @@ export default function PsipMap({
                     ) {
                       return [];
                     }
+                    if (view !== HEATMAP_VIEW && visibleSchools.has(project.id))
+                      return [];
+                    visibleSchools.add(project.id);
                     const buildingIndex = Math.max(
                       0,
                       buildingTypes.indexOf(project.buildingType),
                     );
                     const color =
-                      view === 'Sites Operational Readiness Locator'
+                      view === 'Site Readiness'
                         ? statusColors[project.readiness]
                         : buildingColors[buildingIndex % buildingColors.length];
                     const coordinates: [number, number] = [
@@ -412,116 +526,356 @@ export default function PsipMap({
                     ];
                   }),
                 };
-                map.addSource('psip-projects', {
-                  type: 'geojson',
-                  data: points as never,
-                  cluster: true,
-                  clusterMaxZoom: 12,
-                  clusterRadius: 48,
-                });
-                map.addLayer({
-                  id: 'psip-clusters',
-                  type: 'circle',
-                  source: 'psip-projects',
-                  filter: ['has', 'point_count'],
-                  paint: {
-                    'circle-color': '#1854bd',
-                    'circle-radius': [
-                      'step',
-                      ['get', 'point_count'],
-                      18,
-                      25,
-                      23,
-                      100,
-                      29,
-                    ],
-                    'circle-stroke-color': '#ffffff',
-                    'circle-stroke-width': 3,
-                  },
-                });
-                map.addLayer({
-                  id: 'psip-cluster-count',
-                  type: 'symbol',
-                  source: 'psip-projects',
-                  filter: ['has', 'point_count'],
-                  layout: {
-                    'text-field': ['get', 'point_count_abbreviated'],
-                    'text-size': 12,
-                  },
-                  paint: { 'text-color': '#ffffff' },
-                });
-                map.addLayer({
-                  id: 'psip-points',
-                  type: 'circle',
-                  source: 'psip-projects',
-                  filter: ['!', ['has', 'point_count']],
-                  paint: {
-                    'circle-color': ['get', 'color'],
-                    'circle-radius': 7,
-                    'circle-stroke-color': '#ffffff',
-                    'circle-stroke-width': 2,
-                  },
-                });
-                map.on('click', 'psip-clusters', (event) => {
-                  const feature = event.features?.[0] as unknown as
-                    | MapPointFeature
-                    | undefined;
-                  if (!feature || feature.geometry.type !== 'Point') return;
-                  const clusterId = Number(feature.properties?.cluster_id);
-                  const source = map.getSource(
-                    'psip-projects',
-                  ) as mapboxgl.GeoJSONSource;
-                  source.getClusterExpansionZoom(
-                    clusterId,
-                    (clusterError, zoom) => {
-                      if (clusterError || zoom === null || zoom === undefined)
-                        return;
-                      map.easeTo({
-                        center: feature.geometry.coordinates as [
-                          number,
-                          number,
-                        ],
-                        zoom,
-                      });
+                if (view === HEATMAP_VIEW) {
+                  map.addSource('psip-projects', {
+                    type: 'geojson',
+                    data: points as never,
+                  });
+                  map.addLayer({
+                    id: 'psip-at-risk-heatmap',
+                    type: 'heatmap',
+                    source: 'psip-projects',
+                    filter: ['==', ['get', 'readiness'], 'At risk'],
+                    maxzoom: 11,
+                    paint: {
+                      'heatmap-weight': [
+                        'interpolate',
+                        ['linear'],
+                        ['get', 'classrooms'],
+                        0,
+                        0.2,
+                        40,
+                        1,
+                      ],
+                      'heatmap-intensity': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        3,
+                        0.7,
+                        10,
+                        2.2,
+                      ],
+                      'heatmap-radius': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        3,
+                        16,
+                        10,
+                        42,
+                      ],
+                      'heatmap-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['heatmap-density'],
+                        0,
+                        'rgba(254,240,138,0)',
+                        0.25,
+                        '#fde68a',
+                        0.5,
+                        '#fb923c',
+                        0.75,
+                        '#ef4444',
+                        1,
+                        '#991b1b',
+                      ],
+                      'heatmap-opacity': 0.82,
                     },
-                  );
-                });
-                const popup = new mapboxgl.Popup({
-                  closeButton: false,
-                  closeOnClick: false,
-                  maxWidth: '290px',
-                  offset: 12,
-                });
-                map.on('mouseenter', 'psip-points', (event) => {
-                  const feature = event.features?.[0] as unknown as
-                    | MapPointFeature
-                    | undefined;
-                  const project =
-                    projects[Number(feature?.properties?.projectIndex)];
-                  if (!feature || feature.geometry.type !== 'Point' || !project)
-                    return;
-                  map.getCanvas().style.cursor = 'pointer';
-                  popup
-                    .setLngLat(feature.geometry.coordinates as [number, number])
-                    .setDOMContent(projectPopupContent(project))
-                    .addTo(map);
-                });
-                map.on('mouseleave', 'psip-points', () => {
-                  map.getCanvas().style.cursor = '';
-                  popup.remove();
-                });
-                map.on('click', 'psip-points', (event) => {
-                  const feature = event.features?.[0] as unknown as
-                    | MapPointFeature
-                    | undefined;
-                  const project =
-                    projects[Number(feature?.properties?.projectIndex)];
-                  if (project) selectRef.current(project);
+                  });
+                  map.addLayer({
+                    id: 'psip-at-risk-points',
+                    type: 'circle',
+                    source: 'psip-projects',
+                    filter: ['==', ['get', 'readiness'], 'At risk'],
+                    minzoom: 8,
+                    paint: {
+                      'circle-color': statusColors['At risk'],
+                      'circle-radius': 6,
+                      'circle-stroke-color': '#ffffff',
+                      'circle-stroke-width': 2,
+                    },
+                  });
+                  bindSchoolInteraction('psip-at-risk-points');
+                } else {
+                  map.addSource('psip-projects', {
+                    type: 'geojson',
+                    data: points as never,
+                    cluster: true,
+                    clusterMaxZoom: 12,
+                    clusterRadius: 48,
+                    clusterProperties: {
+                      readyCount: [
+                        '+',
+                        ['case', ['==', ['get', 'readiness'], 'Ready'], 1, 0],
+                      ],
+                      pendingCount: [
+                        '+',
+                        ['case', ['==', ['get', 'readiness'], 'Pending'], 1, 0],
+                      ],
+                      atRiskCount: [
+                        '+',
+                        ['case', ['==', ['get', 'readiness'], 'At risk'], 1, 0],
+                      ],
+                      unknownCount: [
+                        '+',
+                        ['case', ['==', ['get', 'readiness'], 'Unknown'], 1, 0],
+                      ],
+                    },
+                  });
+                  map.addLayer({
+                    id: 'psip-clusters',
+                    type: 'circle',
+                    source: 'psip-projects',
+                    filter: ['has', 'point_count'],
+                    paint: {
+                      'circle-color':
+                        view === 'Site Readiness'
+                          ? [
+                              'case',
+                              [
+                                'all',
+                                [
+                                  '>=',
+                                  ['get', 'atRiskCount'],
+                                  ['get', 'readyCount'],
+                                ],
+                                [
+                                  '>=',
+                                  ['get', 'atRiskCount'],
+                                  ['get', 'pendingCount'],
+                                ],
+                                [
+                                  '>=',
+                                  ['get', 'atRiskCount'],
+                                  ['get', 'unknownCount'],
+                                ],
+                              ],
+                              statusColors['At risk'],
+                              [
+                                'all',
+                                [
+                                  '>=',
+                                  ['get', 'pendingCount'],
+                                  ['get', 'readyCount'],
+                                ],
+                                [
+                                  '>=',
+                                  ['get', 'pendingCount'],
+                                  ['get', 'unknownCount'],
+                                ],
+                              ],
+                              statusColors.Pending,
+                              [
+                                '>=',
+                                ['get', 'readyCount'],
+                                ['get', 'unknownCount'],
+                              ],
+                              statusColors.Ready,
+                              statusColors.Unknown,
+                            ]
+                          : '#1854bd',
+                      'circle-radius': [
+                        'step',
+                        ['get', 'point_count'],
+                        18,
+                        25,
+                        23,
+                        100,
+                        29,
+                      ],
+                      'circle-stroke-color': '#ffffff',
+                      'circle-stroke-width': 3,
+                    },
+                  });
+                  map.addLayer({
+                    id: 'psip-cluster-count',
+                    type: 'symbol',
+                    source: 'psip-projects',
+                    filter: ['has', 'point_count'],
+                    layout: {
+                      'text-field': ['get', 'point_count_abbreviated'],
+                      'text-size': 12,
+                    },
+                    paint: { 'text-color': '#ffffff' },
+                  });
+                  map.addLayer({
+                    id: 'psip-points',
+                    type: 'circle',
+                    source: 'psip-projects',
+                    filter: ['!', ['has', 'point_count']],
+                    paint: {
+                      'circle-color': ['get', 'color'],
+                      'circle-radius': 7,
+                      'circle-stroke-color': '#ffffff',
+                      'circle-stroke-width': 2,
+                    },
+                  });
+                  map.on('click', 'psip-clusters', (event) => {
+                    const feature = event.features?.[0] as unknown as
+                      | MapPointFeature
+                      | undefined;
+                    if (!feature || feature.geometry.type !== 'Point') return;
+                    const clusterId = Number(feature.properties?.cluster_id);
+                    const source = map.getSource(
+                      'psip-projects',
+                    ) as mapboxgl.GeoJSONSource;
+                    source.getClusterExpansionZoom(
+                      clusterId,
+                      (clusterError, zoom) => {
+                        if (clusterError || zoom == null) return;
+                        map.easeTo({
+                          center: feature.geometry.coordinates,
+                          zoom,
+                        });
+                      },
+                    );
+                  });
+                  bindSchoolInteraction('psip-points');
+                }
+              }
+              if (view === REGIONAL_VIEW) {
+                const regions = Array.from(
+                  new Set(
+                    projects.map((project) => canonicalRegion(project.region)),
+                  ),
+                );
+                regions.forEach((region, regionIndex) => {
+                  const sourceId = `regional-schools-${regionIndex}`;
+                  const clusterId = `${sourceId}-clusters`;
+                  const pointId = `${sourceId}-points`;
+                  const seen = new Set<string>();
+                  const features = projects.flatMap((project, projectIndex) => {
+                    if (
+                      canonicalRegion(project.region) !== region ||
+                      seen.has(project.id) ||
+                      !Number.isFinite(project.lng) ||
+                      !Number.isFinite(project.lat)
+                    )
+                      return [];
+                    seen.add(project.id);
+                    return [
+                      {
+                        type: 'Feature' as const,
+                        geometry: {
+                          type: 'Point' as const,
+                          coordinates: [project.lng!, project.lat!],
+                        },
+                        properties: { projectIndex },
+                      },
+                    ];
+                  });
+                  const color = regionColors[region] || '#94a3b8';
+                  map.addSource(sourceId, {
+                    type: 'geojson',
+                    cluster: true,
+                    clusterMaxZoom: 12,
+                    clusterRadius: 48,
+                    data: { type: 'FeatureCollection', features },
+                  });
+                  map.addLayer({
+                    id: clusterId,
+                    type: 'circle',
+                    source: sourceId,
+                    minzoom: REGIONAL_CLUSTER_ZOOM,
+                    filter: ['has', 'point_count'],
+                    paint: {
+                      'circle-color': color,
+                      'circle-radius': [
+                        'step',
+                        ['get', 'point_count'],
+                        16,
+                        25,
+                        21,
+                        100,
+                        27,
+                      ],
+                      'circle-stroke-color': '#ffffff',
+                      'circle-stroke-width': 2,
+                    },
+                  });
+                  map.addLayer({
+                    id: `${sourceId}-counts`,
+                    type: 'symbol',
+                    source: sourceId,
+                    minzoom: REGIONAL_CLUSTER_ZOOM,
+                    filter: ['has', 'point_count'],
+                    layout: {
+                      'text-field': ['get', 'point_count_abbreviated'],
+                      'text-size': 12,
+                      'text-allow-overlap': true,
+                    },
+                    paint: {
+                      'text-color': [
+                        'Region II',
+                        'Region III',
+                        'Region IV-B',
+                        'Region VI',
+                        'Region XVIII',
+                      ].includes(region)
+                        ? '#102044'
+                        : '#ffffff',
+                    },
+                  });
+                  map.addLayer({
+                    id: pointId,
+                    type: 'circle',
+                    source: sourceId,
+                    minzoom: REGIONAL_CLUSTER_ZOOM,
+                    filter: ['!', ['has', 'point_count']],
+                    paint: {
+                      'circle-color': color,
+                      'circle-radius': 7,
+                      'circle-stroke-color': '#ffffff',
+                      'circle-stroke-width': 2,
+                    },
+                  });
+                  bindSchoolInteraction(pointId);
+                  map.on('mouseenter', clusterId, () => {
+                    map.getCanvas().style.cursor = 'pointer';
+                  });
+                  map.on('mouseleave', clusterId, () => {
+                    map.getCanvas().style.cursor = '';
+                  });
+                  map.on('click', clusterId, (event) => {
+                    const feature = event.features?.[0] as unknown as
+                      | MapPointFeature
+                      | undefined;
+                    if (!feature) return;
+                    const source = map.getSource(
+                      sourceId,
+                    ) as mapboxgl.GeoJSONSource;
+                    source.getClusterExpansionZoom(
+                      Number(feature.properties?.cluster_id),
+                      (error, zoom) => {
+                        if (error || zoom == null || disposed) return;
+                        map.easeTo({
+                          center: feature.geometry.coordinates,
+                          zoom,
+                          duration: window.matchMedia(
+                            '(prefers-reduced-motion: reduce)',
+                          ).matches
+                            ? 0
+                            : 500,
+                        });
+                      },
+                    );
+                  });
                 });
               }
               if (!bounds.isEmpty()) {
-                map.fitBounds(bounds, { padding: 48, maxZoom: 7, duration: 0 });
+                map.fitBounds(bounds, {
+                  padding: { top: 220, bottom: 64, left: 64, right: 64 },
+                  maxZoom: searchKind === 'school' ? 14 : searchKind ? 11 : 7,
+                  duration: window.matchMedia(
+                    '(prefers-reduced-motion: reduce)',
+                  ).matches
+                    ? 0
+                    : 700,
+                });
               }
+              if (searchKind === 'school' && projects[0])
+                showSchool(projects[0], false);
               requestAnimationFrame(() => map.resize());
               setLoading(false);
             } catch (cause) {
@@ -541,7 +895,12 @@ export default function PsipMap({
               setLoading(false);
             }
           });
-          cleanup = () => map.remove();
+          cleanup = () => {
+            clearTimeout(hideTimer);
+            schoolPopup.remove();
+            popupRoot.unmount();
+            map.remove();
+          };
         })
         .catch(() => {
           if (!disposed) {
@@ -557,7 +916,7 @@ export default function PsipMap({
       controller.abort();
       cleanup();
     };
-  }, [projects, view]);
+  }, [projects, allProjects, view, searchKind]);
 
   const tokenReady =
     process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.startsWith('pk.');
@@ -576,7 +935,9 @@ export default function PsipMap({
         aria-label={
           view === REGIONAL_VIEW
             ? 'Interactive Mapbox map shaded by regional operational readiness'
-            : 'Clustered interactive Mapbox map of PSIP school projects'
+            : view === HEATMAP_VIEW
+              ? 'Heatmap of at-risk PSIP school project density'
+              : 'Clustered interactive Mapbox map of PSIP school projects'
         }
       />
       {loading && (

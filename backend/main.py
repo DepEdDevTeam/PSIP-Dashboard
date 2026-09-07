@@ -6,13 +6,15 @@ import logging
 import os
 import threading
 from pathlib import Path
-from typing import Annotated, Any, Callable, TypeVar
+from typing import Annotated, Any, Callable, Literal, TypeVar
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from fabric_service import (
+    DatabaseTableInfo,
+    DatabaseTablePage,
     DashboardResponse,
     FabricAuthenticationError,
     FabricConfigurationError,
@@ -83,6 +85,12 @@ def run_service(call: Callable[[], ResultT]) -> ResultT:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+def require_database_browser() -> None:
+    enabled = os.getenv("ENABLE_DATABASE_BROWSER", "false").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        raise HTTPException(status_code=404, detail="Not found")
+
+
 def add_timing_headers(response: Response, cache_status: str, fabric_ms: float, normalization_ms: float) -> None:
     response.headers["X-PSIP-Cache"] = cache_status
     response.headers["Server-Timing"] = (
@@ -136,6 +144,38 @@ def options(response: Response) -> FilterOptions:
         timing.normalization_ms,
     )
     return result
+
+
+@app.get("/api/database/tables", response_model=list[DatabaseTableInfo])
+def database_tables() -> list[DatabaseTableInfo]:
+    require_database_browser()
+    service = service_or_http_error()
+    return run_service(service.get_database_tables)
+
+
+@app.get(
+    "/api/database/{table}",
+    response_model=DatabaseTablePage,
+    response_model_by_alias=True,
+)
+def database_table(
+    table: str,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(alias="pageSize", ge=10, le=200)] = 50,
+    search: Annotated[str | None, Query(max_length=200)] = None,
+    sort_by: Annotated[str | None, Query(alias="sortBy")] = None,
+    sort_order: Annotated[Literal["asc", "desc"], Query(alias="sortOrder")] = "asc",
+) -> DatabaseTablePage:
+    require_database_browser()
+    service = service_or_http_error()
+    try:
+        return run_service(
+            lambda: service.get_database_table(
+                table, page, page_size, search, sort_by, sort_order
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get(

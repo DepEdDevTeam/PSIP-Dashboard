@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono, Inter } from 'next/font/google';
 import './globals.css';
-import { cn } from "@/lib/utils";
+import { cn } from '@/lib/utils';
 
-const inter = Inter({subsets:['latin'],variable:'--font-sans'});
+const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -17,10 +17,19 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://psip-monitor.sites.openai.com'),
-  title: { default: 'PSIP Monitor', template: '%s | PSIP Monitor' },
+  title: { default: 'PPP Dashboard', template: '%s | PPP Dashboard' },
   description: 'Public School Infrastructure Program monitoring dashboard',
-  openGraph: { title: 'PSIP Monitor', description: 'School infrastructure, clearly monitored.', images: ['/og.png'] },
-  twitter: { card: 'summary_large_image', title: 'PSIP Monitor', description: 'School infrastructure, clearly monitored.', images: ['/og.png'] },
+  openGraph: {
+    title: 'PPP Dashboard',
+    description: 'School infrastructure, clearly monitored.',
+    images: ['/og.png'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'PPP Dashboard',
+    description: 'School infrastructure, clearly monitored.',
+    images: ['/og.png'],
+  },
 };
 
 export default function RootLayout({
@@ -29,7 +38,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("font-sans", inter.variable)}>
+    <html lang="en" className={cn('font-sans', inter.variable)}>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

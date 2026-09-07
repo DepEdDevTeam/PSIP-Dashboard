@@ -222,6 +222,23 @@ class SchoolResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class DatabaseTableInfo(BaseModel):
+    name: str
+    columns: list[str]
+
+
+class DatabaseTablePage(BaseModel):
+    table: str
+    columns: list[str]
+    rows: list[dict[str, Any]]
+    total: int
+    page: int
+    page_size: int = Field(alias="pageSize")
+    pages: int
+
+    model_config = {"populate_by_name": True}
+
+
 @dataclass(frozen=True)
 class ServiceTiming:
     cache_status: Literal["hit", "miss"]
@@ -509,6 +526,58 @@ class FabricPsipService:
 
     def get_buildings(self) -> list[dict[str, Any]]:
         return self._load_dataset().get("dimBuildings", [])
+
+    def get_database_tables(self) -> list[DatabaseTableInfo]:
+        """Return the fixed set of entities exposed by the read-only browser."""
+        return [
+            DatabaseTableInfo(name=name, columns=list(columns))
+            for name, columns in ENTITY_FIELDS.items()
+        ]
+
+    def get_database_table(
+        self,
+        table: str,
+        page: int = 1,
+        page_size: int = 50,
+        search: str | None = None,
+        sort_by: str | None = None,
+        sort_order: Literal["asc", "desc"] = "asc",
+    ) -> DatabaseTablePage:
+        if table not in ENTITY_FIELDS:
+            raise ValueError("Unknown database table.")
+        columns = list(ENTITY_FIELDS[table])
+        if sort_by and sort_by not in columns:
+            raise ValueError("Unknown sort column.")
+
+        rows = list(self._load_dataset().get(table, []))
+        query = (search or "").strip().casefold()
+        if query:
+            rows = [
+                row
+                for row in rows
+                if any(query in str(value).casefold() for value in row.values())
+            ]
+
+        if sort_by:
+            def sort_key(row: dict[str, Any]) -> tuple[bool, str]:
+                value = row.get(sort_by)
+                return value is None, str(value).casefold() if value is not None else ""
+
+            rows.sort(key=sort_key, reverse=sort_order == "desc")
+
+        total = len(rows)
+        pages = max(1, (total + page_size - 1) // page_size)
+        safe_page = min(page, pages)
+        start = (safe_page - 1) * page_size
+        return DatabaseTablePage(
+            table=table,
+            columns=columns,
+            rows=rows[start : start + page_size],
+            total=total,
+            page=safe_page,
+            pageSize=page_size,
+            pages=pages,
+        )
 
     def _load_dataset(self) -> dict[str, list[dict[str, Any]]]:
         dataset, _, _ = self._load_dataset_with_timing()

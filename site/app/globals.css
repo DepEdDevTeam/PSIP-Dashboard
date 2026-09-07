@@ -2,38 +2,158 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 @custom-variant dark (&:is(.dark *));
 @theme inline {
-  --color-background: var(--background); --color-foreground: var(--foreground);
-  --color-card: var(--card); --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover); --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary); --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary); --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted); --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent); --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive); --color-border: var(--border);
-  --color-input: var(--input); --color-ring: var(--ring); --font-sans: var(--font-sans);
-  --radius-sm: .5rem; --radius-md: .75rem; --radius-lg: 1rem; --radius-xl: 1.25rem; --font-heading: var(--font-sans); --color-sidebar-ring: var(--sidebar-ring); --color-sidebar-border: var(--sidebar-border); --color-sidebar-accent-foreground: var(--sidebar-accent-foreground); --color-sidebar-accent: var(--sidebar-accent); --color-sidebar-primary-foreground: var(--sidebar-primary-foreground); --color-sidebar-primary: var(--sidebar-primary); --color-sidebar-foreground: var(--sidebar-foreground); --color-sidebar: var(--sidebar); --color-chart-5: var(--chart-5); --color-chart-4: var(--chart-4); --color-chart-3: var(--chart-3); --color-chart-2: var(--chart-2); --color-chart-1: var(--chart-1); --radius-2xl: calc(var(--radius) * 1.8); --radius-3xl: calc(var(--radius) * 2.2); --radius-4xl: calc(var(--radius) * 2.6);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-sans);
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
-:root { --card: oklch(1 0 0); --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0); --popover-foreground: oklch(0.145 0 0); --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0); --secondary-foreground: oklch(0.205 0 0); --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0); --accent-foreground: oklch(0.205 0 0); --destructive: oklch(0.577 0.245 27.325); --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0); --ring: oklch(0.708 0 0); --background: oklch(1 0 0); --foreground: oklch(0.145 0 0); --chart-1: oklch(0.87 0 0); --chart-2: oklch(0.556 0 0); --chart-3: oklch(0.439 0 0); --chart-4: oklch(0.371 0 0); --chart-5: oklch(0.269 0 0); --radius: 0.625rem; --sidebar: oklch(0.985 0 0); --sidebar-foreground: oklch(0.145 0 0); --sidebar-primary: oklch(0.205 0 0); --sidebar-primary-foreground: oklch(0.985 0 0); --sidebar-accent: oklch(0.97 0 0); --sidebar-accent-foreground: oklch(0.205 0 0); --sidebar-border: oklch(0.922 0 0); --sidebar-ring: oklch(0.708 0 0);
+:root {
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 }
-* { border-color:var(--border); }
-html { background:var(--background); min-width:320px; overflow-x:hidden; }
-body { margin:0; min-width:320px; overflow-x:hidden; font-family:var(--font-geist-sans),Arial,sans-serif; }
-button,input,select { font:inherit; }
-:focus-visible { outline:3px solid color-mix(in srgb,var(--ring) 62%,transparent); outline-offset:2px; }
-@media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition-duration:.01ms!important; } }
-.mapboxgl-map { font-family:var(--font-geist-sans),Arial,sans-serif; background:#e9eff7; }
-.mapboxgl-ctrl-attrib { font-size:9px!important; }
-.psip-map-marker { display:grid; place-items:center; width:28px; height:28px; min-width:44px; min-height:44px; padding:0; background:radial-gradient(circle,var(--marker-color,#1854bd) 0 34%,#fff 36% 49%,transparent 51%); border:0; border-radius:999px; box-shadow:none; cursor:pointer; touch-action:manipulation; transition:transform .15s ease,filter .15s ease; }
-.psip-map-marker:hover,.psip-map-marker:focus-visible { transform:scale(1.1); filter:drop-shadow(0 6px 9px rgba(11,36,95,.35)); }
-.psip-map-marker::after { content:''; width:5px; height:5px; border-radius:999px; background:#fff; }
+* {
+  border-color: var(--border);
+}
+html {
+  background: var(--background);
+  min-width: 320px;
+  overflow-x: hidden;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  overflow-x: hidden;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+}
+button,
+input,
+select {
+  font: inherit;
+}
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ring) 62%, transparent);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+.mapboxgl-map {
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  background: #e9eff7;
+}
+.mapboxgl-ctrl-attrib {
+  font-size: 9px !important;
+}
+.psip-map-marker {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: radial-gradient(
+    circle,
+    var(--marker-color, #1854bd) 0 34%,
+    #fff 36% 49%,
+    transparent 51%
+  );
+  border: 0;
+  border-radius: 999px;
+  box-shadow: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    transform 0.15s ease,
+    filter 0.15s ease;
+}
+.psip-map-marker:hover,
+.psip-map-marker:focus-visible {
+  transform: scale(1.1);
+  filter: drop-shadow(0 6px 9px rgba(11, 36, 95, 0.35));
+}
+.psip-map-marker::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #fff;
+}
 
 .dark {
   --background: oklch(0.145 0 0);
@@ -78,5 +198,190 @@ button,input,select { font:inherit; }
   }
   html {
     @apply font-sans;
+  }
+}
+
+.school-summary-popup .mapboxgl-popup-content {
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 30px #10204430;
+}
+.school-map-card {
+  width: min(480px, calc(100vw - 32px));
+  color: #102044;
+  font:
+    14px/1.4 Arial,
+    sans-serif;
+}
+.school-map-card header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #2563eb;
+  color: white;
+  font-size: 18px;
+}
+.school-map-card svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.school-map-card header > svg {
+  width: 30px;
+  height: 30px;
+}
+.school-map-card header button {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.school-map-card header button:hover {
+  background: #ffffff25;
+}
+.school-map-card button:focus-visible,
+.school-map-card a:focus-visible {
+  outline: 3px solid #fbbf24;
+  outline-offset: -3px;
+}
+.school-map-body {
+  max-height: min(760px, calc(100dvh - 300px));
+  min-height: 150px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  background: white;
+}
+.school-map-body h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  text-align: center;
+}
+.school-map-location {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #526079;
+  font-size: 12px;
+}
+.school-map-location svg {
+  width: 16px;
+  height: 16px;
+}
+.school-map-readiness {
+  margin: 14px 0;
+  text-align: center;
+}
+.school-map-readiness > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 6px 0;
+}
+.school-map-readiness span {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-weight: 600;
+}
+.school-map-readiness [data-status='Ready'],
+.scope-yes {
+  color: #087a54;
+}
+.school-map-readiness [data-status='At risk'] {
+  color: #c4263f;
+}
+.school-map-readiness [data-status='Pending'] {
+  color: #956000;
+}
+.school-map-readiness small,
+.school-map-scopes small,
+.scope-no {
+  color: #526079;
+}
+.school-map-metrics,
+.school-map-scopes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.school-map-metrics > div,
+.school-map-facilities > div,
+.school-map-scopes > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+}
+.school-map-metrics {
+  padding: 14px 0;
+  border-top: 1px solid #e2e8f0;
+}
+.school-map-metrics svg,
+.school-map-facilities svg,
+.school-map-works svg,
+.school-map-scopes > div > svg:first-child {
+  color: #1854bd;
+}
+.school-map-metrics b {
+  font-size: 21px;
+}
+.school-map-facilities {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 18px;
+  font-size: 12px;
+}
+.school-map-facilities span {
+  min-height: 34px;
+}
+.school-map-works {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  border-top: 1px solid #e2e8f0;
+  padding: 14px 0;
+}
+.school-map-works h3 {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.school-map-works p {
+  margin: 4px 0;
+}
+.school-map-scopes {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 14px;
+  font-size: 12px;
+}
+.school-map-details {
+  display: block;
+  text-align: center;
+  background: #1854bd;
+  color: white;
+  font-weight: 700;
+  padding: 10px;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+@media (max-width: 480px) {
+  .school-map-facilities {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .school-map-card header {
+    font-size: 16px;
   }
 }

@@ -24,7 +24,6 @@ import {
   Activity,
   ArrowUpDown,
   Building2,
-  Check,
   CheckCircle2,
   ChevronDown,
   Clock3,
@@ -45,13 +44,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+
 import {
   Table,
   TableBody,
@@ -61,6 +54,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { ProjectFilters, SchoolProject } from '@/lib/psip-data';
+import { searchProjects, searchContext } from '@/lib/dashboard-search';
+import {
+  Combobox,
+  ComboboxInput,
+  ComboboxContent,
+  ComboboxList,
+  ComboboxItem,
+} from '@/components/ui/combobox';
 import { fetchDashboard } from '@/lib/psip-api';
 
 const PsipMap = dynamic(() => import('@/components/psip-map'), {
@@ -73,10 +74,6 @@ const PsipMap = dynamic(() => import('@/components/psip-map'), {
 });
 
 const number = new Intl.NumberFormat('en-PH');
-const compact = new Intl.NumberFormat('en-PH', {
-  notation: 'compact',
-  maximumFractionDigits: 1,
-});
 const blank: ProjectFilters = {
   region: '',
   division: '',
@@ -96,9 +93,10 @@ const col = createColumnHelper<SchoolProject>();
 
 type DashboardView = 'map' | 'report' | 'directory';
 export type AnalyticsLens =
-  | 'Regional Map View'
-  | 'Buildings Geographical Location'
-  | 'Sites Operational Readiness Locator';
+  | 'Regional View'
+  | 'Building Profile'
+  | 'Site Readiness'
+  | 'At-risk Heatmap';
 type RegionRow = {
   region: string;
   classrooms: number;
@@ -109,13 +107,16 @@ type RegionRow = {
 };
 
 const lenses = [
-  { value: 'Regional Map View', short: 'Regions' },
-  { value: 'Buildings Geographical Location', short: 'Buildings' },
+  { value: 'Regional View', short: 'Regions' },
+  { value: 'Building Profile', short: 'Buildings' },
   {
-    value: 'Sites Operational Readiness Locator',
+    value: 'Site Readiness',
     short: 'Readiness',
   },
+  { value: 'At-risk Heatmap', short: 'Heatmap' },
 ] as const;
+
+const reportLenses = [lenses[1], lenses[2]] as const;
 
 function appliesScope(project: SchoolProject, scope: string) {
   return (
@@ -141,10 +142,9 @@ function specialRooms(project: SchoolProject) {
 
 export default function DashboardPage() {
   const [filters, setFilters] = useState<ProjectFilters>(blank);
-  const [selected, setSelected] = useState<SchoolProject | null>(null);
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [view, setView] = useState<DashboardView>('map');
-  const [lens, setLens] = useState<AnalyticsLens>('Regional Map View');
+  const [view, setView] = useState<DashboardView>('report');
+  const [lens, setLens] = useState<AnalyticsLens>('Regional View');
   const [projects, setProjects] = useState<SchoolProject[]>([]);
   const [apiOptions, setApiOptions] = useState({
     regions: [] as string[],
@@ -167,7 +167,12 @@ export default function DashboardPage() {
       search: query.get('search') || '',
     });
     const queryView = query.get('view');
-    if (queryView === 'report' || queryView === 'directory') setView(queryView);
+    if (
+      queryView === 'map' ||
+      queryView === 'report' ||
+      queryView === 'directory'
+    )
+      setView(queryView);
     const queryLens = query.get('lens');
     if (lenses.some((item) => item.value === queryLens))
       setLens(queryLens as AnalyticsLens);
@@ -177,7 +182,7 @@ export default function DashboardPage() {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-      fetchDashboard(controller.signal, reloadKey > 0)
+    fetchDashboard(controller.signal, reloadKey > 0)
       .then((data) => {
         setProjects(data.projects);
         setApiOptions({
@@ -188,11 +193,6 @@ export default function DashboardPage() {
           ).sort(),
         });
         setSnapshotDate(data.snapshotDate);
-        const school = new URLSearchParams(location.search).get('school');
-        if (school)
-          setSelected(
-            data.projects.find((project) => project.id === school) || null,
-          );
       })
       .catch((reason) => {
         if (reason?.name !== 'AbortError')
@@ -211,15 +211,14 @@ export default function DashboardPage() {
     Object.entries(filters).forEach(([key, value]) => {
       if (value) query.set(key === 'buildingType' ? 'building' : key, value);
     });
-    if (view !== 'map') query.set('view', view);
-    if (lens !== 'Regional Map View') query.set('lens', lens);
-    if (selected) query.set('school', selected.id);
+    if (view !== 'report') query.set('view', view);
+    if (lens !== 'Regional View') query.set('lens', lens);
     history.replaceState(
       null,
       '',
       `/dashboard${query.size ? `?${query}` : ''}`,
     );
-  }, [filters, lens, selected, view]);
+  }, [filters, lens, view]);
 
   useEffect(() => {
     if (!projects.length || !filters.region || !filters.division) return;
@@ -246,22 +245,34 @@ export default function DashboardPage() {
     [filters.region, projects],
   );
 
+  const searched = useMemo(
+    () => searchProjects(projects, filters.search),
+    [projects, filters.search],
+  );
+  const context = useMemo(
+    () => searchContext(searched, filters.search),
+    [searched, filters.search],
+  );
+  const suggestions = useMemo(
+    () =>
+      Array.from(
+        new Set(projects.flatMap((p) => [p.name, p.id, p.division, p.region])),
+      ).sort(),
+    [projects],
+  );
+
   const filtered = useMemo(
     () =>
-      projects.filter(
+      searched.filter(
         (project) =>
           (!filters.region || project.region === filters.region) &&
           (!filters.division || project.division === filters.division) &&
           (!filters.buildingType ||
             project.buildingType === filters.buildingType) &&
           (!filters.readiness || project.readiness === filters.readiness) &&
-          appliesScope(project, filters.scope) &&
-          (!filters.search ||
-            `${project.id} ${project.name} ${project.division}`
-              .toLowerCase()
-              .includes(filters.search.toLowerCase())),
+          appliesScope(project, filters.scope),
       ),
-    [filters, projects],
+    [filters, searched],
   );
   const buildingData = useMemo(
     () =>
@@ -385,12 +396,12 @@ export default function DashboardPage() {
       col.accessor('name', {
         header: 'School',
         cell: (info) => (
-          <button
+          <Link
             className="font-semibold text-[#164da8] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1854bd]"
-            onClick={() => setSelected(info.row.original)}
+            href={`/schools/${encodeURIComponent(info.row.original.id)}`}
           >
             {info.getValue()}
-          </button>
+          </Link>
         ),
       }),
       col.accessor('buildingType', { header: 'Building' }),
@@ -416,6 +427,8 @@ export default function DashboardPage() {
   });
   const update = (key: keyof ProjectFilters, value: string) =>
     setFilters((current) => {
+      if (key === 'search')
+        return { ...current, search: value, region: '', division: '' };
       if (key !== 'region') return { ...current, [key]: value };
       const divisionStillApplies =
         !value ||
@@ -432,6 +445,7 @@ export default function DashboardPage() {
     });
   const filtersPanel = (
     <DashboardFilters
+      suggestions={suggestions}
       filters={filters}
       active={active}
       update={update}
@@ -456,14 +470,20 @@ export default function DashboardPage() {
           />
         ) : filtered.length === 0 ? (
           <div className="h-full overflow-auto p-4">
+            {filtersPanel}
             <Empty onClear={() => setFilters(blank)} />
           </div>
         ) : view === 'map' ? (
           <MapPanel
             data={filtered}
-            onSelect={setSelected}
+            allProjects={projects}
             controls={filtersPanel}
-            lens={lens}
+            lens={
+              context && context.kind !== 'region' && lens === 'Regional View'
+                ? 'Building Profile'
+                : lens
+            }
+            searchKind={context?.kind}
             onLensChange={setLens}
           />
         ) : view === 'report' ? (
@@ -477,6 +497,7 @@ export default function DashboardPage() {
             lens={lens}
             onLensChange={setLens}
             filters={filtersPanel}
+            searchHeader={context}
             selectedRegion={filters.region}
             selectedDivision={filters.division}
             update={update}
@@ -489,7 +510,6 @@ export default function DashboardPage() {
           />
         )}
       </div>
-      <SchoolPreview school={selected} onClose={() => setSelected(null)} />
     </main>
   );
 }
@@ -520,7 +540,7 @@ function AppHeader({
       <div className="flex min-h-16 items-center justify-between gap-3 px-4 py-2 lg:px-6">
         <Link
           href="/dashboard"
-          onClick={() => onNavigate('map')}
+          onClick={() => onNavigate('report')}
           className="flex shrink-0 items-center gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           <div className="grid size-9 place-items-center rounded-xl bg-white text-[#123b8f]">
@@ -530,7 +550,7 @@ function AppHeader({
             <p className="text-[10px] font-bold uppercase tracking-[.16em] text-blue-200">
               Department of Education
             </p>
-            <p className="font-semibold tracking-tight">PSIP Monitor</p>
+            <p className="font-semibold tracking-tight">PPP Dashboard</p>
           </div>
         </Link>
         <nav
@@ -560,6 +580,7 @@ function AppHeader({
 }
 
 function DashboardFilters({
+  suggestions,
   filters,
   active,
   update,
@@ -569,6 +590,7 @@ function DashboardFilters({
   buildingTypes,
   showRegion,
 }: {
+  suggestions: string[];
   filters: ProjectFilters;
   active: [keyof ProjectFilters, string][];
   update: (key: keyof ProjectFilters, value: string) => void;
@@ -583,19 +605,42 @@ function DashboardFilters({
       <div
         className={`grid min-w-0 grid-cols-2 gap-2 max-[359px]:grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${showRegion ? 'xl:grid-cols-[minmax(240px,1.5fr)_repeat(4,minmax(132px,1fr))_auto]' : 'xl:grid-cols-[minmax(240px,1.5fr)_repeat(3,minmax(140px,1fr))_auto]'}`}
       >
-        <label className="relative col-span-2 min-w-0 max-[359px]:col-span-1 lg:col-span-3 xl:col-span-1">
-          <span className="sr-only">Search schools</span>
-          <Search
-            className="pointer-events-none absolute left-3 top-3.5 size-4 text-[#5e6d85] xl:top-3"
-            aria-hidden="true"
-          />
-          <input
-            value={filters.search}
-            onChange={(event) => update('search', event.target.value)}
-            placeholder="Search school, ID, or division"
-            className="h-11 w-full min-w-0 rounded-xl border border-[#cad5e3] bg-white pl-9 pr-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-[#1854bd] sm:text-sm xl:h-10"
-          />
-        </label>
+        <div className="relative col-span-2 min-w-0 max-[359px]:col-span-1 lg:col-span-3 xl:col-span-1">
+          <Combobox<string>
+            items={
+              filters.search.trim()
+                ? suggestions
+                    .filter((item) =>
+                      item
+                        .toLowerCase()
+                        .includes(filters.search.trim().toLowerCase()),
+                    )
+                    .slice(0, 30)
+                : []
+            }
+            inputValue={filters.search}
+            onInputValueChange={(value) => update('search', value)}
+            onValueChange={(value) => {
+              if (value) update('search', value);
+            }}
+          >
+            <ComboboxInput
+              aria-label="Search schools, school IDs, divisions, or regions"
+              placeholder="Search school, ID, division, or region"
+              showTrigger={false}
+              className="h-11 w-full rounded-xl bg-white"
+            />
+            <ComboboxContent>
+              <ComboboxList>
+                {(item: string) => (
+                  <ComboboxItem key={item} value={item}>
+                    {item}
+                  </ComboboxItem>
+                )}
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
+        </div>
         {showRegion && (
           <FilterSelect
             label="Region"
@@ -690,17 +735,22 @@ function FilterSelect({
 function LensControl({
   value,
   onChange,
+  items = lenses,
 }: {
   value: AnalyticsLens;
   onChange: (value: AnalyticsLens) => void;
+  items?: readonly (typeof lenses)[number][];
 }) {
   return (
     <div
-      className="grid w-full min-w-0 grid-cols-1 gap-1 rounded-xl bg-[#eef3fa] p-1 sm:grid-cols-3 xl:max-w-[704px]"
+      className="grid w-full min-w-0 gap-1 rounded-xl bg-[#eef3fa] p-1 xl:max-w-[704px]"
+      style={{
+        gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`,
+      }}
       role="tablist"
       aria-label="Analytics lens"
     >
-      {lenses.map((item) => (
+      {items.map((item) => (
         <button
           type="button"
           key={item.value}
@@ -719,14 +769,16 @@ function LensControl({
 }
 
 function MapPanel({
+  searchKind,
   data,
-  onSelect,
+  allProjects,
   controls,
   lens,
   onLensChange,
 }: {
+  searchKind?: string;
   data: SchoolProject[];
-  onSelect: (project: SchoolProject) => void;
+  allProjects: SchoolProject[];
   controls: React.ReactNode;
   lens: AnalyticsLens;
   onLensChange: (lens: AnalyticsLens) => void;
@@ -741,16 +793,23 @@ function MapPanel({
               {lens}
             </p>
             <h1 className="mt-1 text-base font-bold leading-6 sm:text-lg">
-              {lens === 'Regional Map View'
+              {lens === 'Regional View'
                 ? 'Regional readiness across the Philippines'
-                : 'School sites across the Philippines'}
+                : lens === 'At-risk Heatmap'
+                  ? 'At-risk project density across the Philippines'
+                  : 'School sites across the Philippines'}
             </h1>
           </div>
           <LensControl value={lens} onChange={onLensChange} />
         </div>
       </div>
       <div className="relative mt-2 min-h-[420px] flex-1 bg-[#dce5ef] sm:absolute sm:inset-0 sm:mt-0 sm:min-h-0">
-        <PsipMap projects={data} onSelect={onSelect} view={lens} />
+        <PsipMap
+          projects={data}
+          allProjects={allProjects}
+          view={lens}
+          searchKind={searchKind}
+        />
         <MapLegend data={data} lens={lens} />
       </div>
     </article>
@@ -763,7 +822,7 @@ function MapLegend({
   data: SchoolProject[];
   lens: AnalyticsLens;
 }) {
-  if (lens === 'Regional Map View')
+  if (lens === 'Regional View')
     return (
       <div className="pointer-events-none absolute bottom-4 left-4 z-[500] flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-xl border bg-white/95 px-3 py-2 text-xs font-medium text-[#526079] shadow-sm">
         <span className="flex overflow-hidden rounded-full" aria-hidden="true">
@@ -780,8 +839,15 @@ function MapLegend({
         Colors identify regions · Hover or tap for readiness details
       </div>
     );
+  if (lens === 'At-risk Heatmap')
+    return (
+      <div className="pointer-events-none absolute bottom-4 left-4 z-[500] rounded-xl border bg-white/95 px-3 py-2 text-xs font-medium text-[#526079] shadow-sm">
+        <span className="mr-2 inline-block h-2.5 w-20 rounded-full bg-gradient-to-r from-[#fde68a] via-[#f97316] to-[#b91c1c]" />
+        Lower to higher at-risk density
+      </div>
+    );
   const items =
-    lens === 'Sites Operational Readiness Locator'
+    lens === 'Site Readiness'
       ? ['Ready', 'Pending', 'At risk', 'Unknown'].map((name) => ({
           name,
           color: readinessColor[name as keyof typeof readinessColor],
@@ -808,6 +874,7 @@ function MapLegend({
 }
 
 function ReportOverview({
+  searchHeader,
   data,
   regionData,
   buildingData,
@@ -821,6 +888,7 @@ function ReportOverview({
   selectedDivision,
   update,
 }: {
+  searchHeader: ReturnType<typeof searchContext>;
   data: SchoolProject[];
   regionData: RegionRow[];
   buildingData: { name: string; value: number; color: string }[];
@@ -838,6 +906,8 @@ function ReportOverview({
   selectedDivision: string;
   update: (key: keyof ProjectFilters, value: string) => void;
 }) {
+  const reportLens =
+    lens === 'Site Readiness' ? 'Site Readiness' : 'Building Profile';
   const classrooms = data.reduce((sum, project) => sum + project.classrooms, 0),
     specials = classificationData
       .slice(1)
@@ -852,26 +922,37 @@ function ReportOverview({
       <div className="mx-auto max-w-[1500px] space-y-4 px-4 py-4 lg:px-6 lg:py-6">
         <section className="overflow-hidden rounded-2xl border border-[#d9e2ee] bg-white shadow-[0_8px_24px_rgba(21,48,93,.06)]">
           <div className="p-4">{filters}</div>
-          <div className="grid gap-4 border-t border-[#e2e8f0] p-4 lg:grid-cols-[minmax(0,1fr)_minmax(540px,.9fr)] lg:items-center">
+          <div className="grid gap-4 border-t border-[#e2e8f0] p-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,.65fr)] lg:items-center">
             <div>
               <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-[#e7eefb] px-3 py-1 text-xs font-bold text-[#1854bd]">
                 <LayoutDashboard className="size-3.5" aria-hidden="true" />
                 Report Overview
               </div>
               <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                National infrastructure portfolio at a glance
+                {searchHeader?.title ||
+                  selectedDivision ||
+                  selectedRegion ||
+                  'National infrastructure portfolio at a glance'}
               </h1>
+              {(searchHeader?.subtitle || selectedDivision) && (
+                <p className="mt-2 text-sm text-[#526079]">
+                  {searchHeader?.subtitle || selectedRegion}
+                </p>
+              )}
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[#526079]">
-                All cards and charts use the current dashboard filters. Change
-                the analytics lens to move between building composition and
-                operational readiness.
+                All cards and charts use the current dashboard filters. Choose
+                between building composition and operational readiness.
               </p>
             </div>
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-[.12em] text-[#63718a]">
-                Analytics lens · synchronized with map
+                Report view
               </p>
-              <LensControl value={lens} onChange={onLensChange} />
+              <LensControl
+                value={reportLens}
+                onChange={onLensChange}
+                items={reportLenses}
+              />
             </div>
           </div>
         </section>
@@ -909,9 +990,9 @@ function ReportOverview({
           />
         </section>
         <div aria-live="polite" className="sr-only">
-          Report changed to {lens}
+          Report changed to {reportLens}
         </div>
-        {lens !== 'Sites Operational Readiness Locator' && (
+        {reportLens !== 'Site Readiness' && (
           <BuildingReport
             buildingData={buildingData}
             classificationData={classificationData}
@@ -923,7 +1004,7 @@ function ReportOverview({
             onSelect={(value) => update('buildingType', value)}
           />
         )}{' '}
-        {lens === 'Sites Operational Readiness Locator' && (
+        {reportLens === 'Site Readiness' && (
           <ReadinessReport
             readinessData={readinessData}
             regionData={regionData}
@@ -965,7 +1046,7 @@ function MetricCard({
             className="mt-2 text-3xl font-bold tabular-nums text-[#102044]"
             title={numeric ? number.format(value) : undefined}
           >
-            {numeric ? compact.format(value) : value}
+            {numeric ? number.format(value) : value}
           </p>
           <p className="mt-2 text-xs leading-5 text-[#69768d]">{detail}</p>
         </div>
@@ -1005,24 +1086,35 @@ function BuildingReport({
 }) {
   const comparisonData = selectedRegion
     ? Array.from(new Set(data.map((project) => project.division)))
-        .map((division) => ({
-          label: division,
-          ...Object.fromEntries(
-            buildingTypes.map((type) => [
-              type,
-              data.filter(
-                (project) =>
-                  project.division === division &&
-                  project.buildingType === type,
-              ).length,
-            ]),
+        .map((division) => {
+          const divisionProjects = data.filter(
+            (project) => project.division === division,
+          );
+          return {
+            label: division,
+            total: divisionProjects.length,
+            ...Object.fromEntries(
+              buildingTypes.map((type) => [
+                type,
+                divisionProjects.filter(
+                  (project) => project.buildingType === type,
+                ).length,
+              ]),
+            ),
+          };
+        })
+        .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label))
+    : regionData
+        .map((row) => ({
+          label: row.region,
+          total: Object.values(row.buildings).reduce(
+            (sum, value) => sum + value,
+            0,
           ),
+          ...row.buildings,
         }))
-        .sort((a, b) => a.label.localeCompare(b.label))
-    : regionData.slice(0, 15).map((row) => ({
-        label: row.region,
-        ...row.buildings,
-      }));
+        .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label))
+        .slice(0, 15);
   const comparisonLabel = selectedRegion ? 'division' : 'region';
   const buildingChartData = (
     selectedDivision ? buildingData : comparisonData
@@ -1096,7 +1188,7 @@ function BuildingReport({
         description={
           selectedDivision
             ? 'Project totals for each building type in the selected division.'
-            : `The grouped bars show how each building type is distributed across ${comparisonLabel}s.`
+            : `Ranked by total projects, the grouped bars show how each building type is distributed across ${comparisonLabel}s.`
         }
       >
         <ChartContainer
@@ -1228,23 +1320,35 @@ function ReadinessReport({
   }));
   const comparisonData = selectedRegion
     ? Array.from(new Set(data.map((project) => project.division)))
-        .map((division) => ({
-          label: division,
-          ...Object.fromEntries(
-            statuses.map((status) => [
-              status,
-              data.filter(
-                (project) =>
-                  project.division === division && project.readiness === status,
-              ).length,
-            ]),
+        .map((division) => {
+          const divisionProjects = data.filter(
+            (project) => project.division === division,
+          );
+          return {
+            label: division,
+            total: divisionProjects.length,
+            ...Object.fromEntries(
+              statuses.map((status) => [
+                status,
+                divisionProjects.filter(
+                  (project) => project.readiness === status,
+                ).length,
+              ]),
+            ),
+          };
+        })
+        .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label))
+    : regionData
+        .map((row) => ({
+          label: row.region,
+          total: Object.values(row.readiness).reduce(
+            (sum, value) => sum + value,
+            0,
           ),
+          ...row.readiness,
         }))
-        .sort((a, b) => a.label.localeCompare(b.label))
-    : regionData.slice(0, 18).map((row) => ({
-        label: row.region,
-        ...row.readiness,
-      }));
+        .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label))
+        .slice(0, 18);
   const comparisonLabel = selectedRegion ? 'division' : 'region';
   const readinessChartData = (
     selectedDivision ? statusDetailData : comparisonData
@@ -1310,7 +1414,7 @@ function ReadinessReport({
         description={
           selectedDivision
             ? 'Record totals for each readiness status in the selected division.'
-            : 'Each bar shows the mix of ready, pending, at-risk, and unclassified records.'
+            : 'Ranked by total projects, each bar shows the mix of ready, pending, at-risk, and unclassified records.'
         }
       >
         <ChartContainer
@@ -1518,106 +1622,6 @@ function Status({ value }: { value: SchoolProject['readiness'] }) {
   );
 }
 
-function SchoolPreview({
-  school,
-  onClose,
-}: {
-  school: SchoolProject | null;
-  onClose: () => void;
-}) {
-  if (!school) return null;
-  const facilities = school.facilities || {
-    audioVisual: 0,
-    computerLab: 1,
-    homeEconomics: 0,
-    scienceLab: 1,
-    workshop: 0,
-  };
-  return (
-    <Sheet open={Boolean(school)} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent
-        side="right"
-        className="w-full overflow-y-auto p-0 sm:max-w-[480px]"
-      >
-        <div className="bg-[#0b245f] px-6 pb-6 pt-10 text-white">
-          <SheetHeader className="p-0">
-            <p className="text-xs font-bold uppercase tracking-[.14em] text-blue-200">
-              School projects overview
-            </p>
-            <SheetTitle className="mt-2 text-2xl font-bold text-white">
-              {school.name}
-            </SheetTitle>
-            <SheetDescription className="text-blue-100">
-              {school.municipality}, {school.division} · {school.region}
-            </SheetDescription>
-          </SheetHeader>
-          <div className="mt-5 flex items-center justify-between rounded-xl bg-white/10 p-3">
-            <span className="text-sm">Operational readiness</span>
-            <Status value={school.readiness} />
-          </div>
-        </div>
-        <div className="space-y-5 p-6">
-          <div className="grid grid-cols-3 gap-3">
-            <Mini label="Classrooms" value={school.classrooms} />
-            <Mini label="Floors" value={school.floors} />
-            <Mini label="Project" value={school.projectId || '—'} />
-          </div>
-          <div>
-            <h3 className="mb-3 font-bold">Special facilities</h3>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              {Object.entries(facilities).map(([key, value]) => (
-                <div key={key} className="rounded-xl bg-[#f4f7fb] p-3">
-                  <p className="text-xs capitalize text-[#647089]">
-                    {key.replace(/([A-Z])/g, ' $1')}
-                  </p>
-                  <b>{value}</b>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div>
-            <h3 className="mb-3 font-bold">Scope of works</h3>
-            <div className="space-y-2">
-              <Scope label="Site improvement" active={school.siteImprovement} />
-              <Scope label="Slope protection" active={school.slopeProtection} />
-              <Scope label="For demolition" active={school.demolition} />
-            </div>
-          </div>
-          <Link
-            href={`/schools/${school.id}`}
-            className="flex min-h-11 items-center justify-center rounded-xl bg-[#1854bd] font-bold text-white hover:bg-[#0b245f] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1854bd]"
-          >
-            Open full details
-          </Link>
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-function Mini({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border p-3 text-center">
-      <b className="text-xl">{value}</b>
-      <p className="text-xs text-[#647089]">{label}</p>
-    </div>
-  );
-}
-function Scope({ label, active }: { label: string; active: boolean }) {
-  return (
-    <div className="flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm">
-      <span>{label}</span>
-      <span
-        className={`grid size-6 place-items-center rounded-full ${active ? 'bg-[#ddf7ec] text-[#087a54]' : 'bg-[#f0f2f6] text-[#8490a3]'}`}
-      >
-        {active ? (
-          <Check className="size-4" aria-hidden="true" />
-        ) : (
-          <X className="size-4" aria-hidden="true" />
-        )}
-      </span>
-    </div>
-  );
-}
 function LoadingState() {
   return (
     <section className="absolute inset-0 grid place-items-center bg-[#eaf0f7]">

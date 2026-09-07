@@ -178,6 +178,45 @@ class NormalizationTests(unittest.TestCase):
         self.assertNotEqual(dashboard.records[0].record_id, dashboard.records[1].record_id)
 
 
+class DatabaseBrowserTests(unittest.TestCase):
+    def setUp(self):
+        self.dataset = {
+            "dimRegions": [
+                {"RegionSK": 2, "RegionName": "NCR", "RegionCode": "13"},
+                {"RegionSK": 1, "RegionName": "CAR", "RegionCode": "14"},
+                {"RegionSK": 3, "RegionName": "Region I", "RegionCode": "01"},
+            ]
+        }
+        self.service = FabricPsipService(FakeClient(self.dataset), cache_seconds=60)
+
+    def test_lists_only_allowlisted_tables(self):
+        tables = self.service.get_database_tables()
+
+        self.assertEqual([table.name for table in tables], list(ENTITY_FIELDS))
+        self.assertEqual(tables[-2].columns[0], "RegionSK")
+
+    def test_filters_sorts_and_paginates_raw_rows(self):
+        result = self.service.get_database_table(
+            "dimRegions", page=1, page_size=10, search="r", sort_by="RegionName"
+        )
+
+        self.assertEqual(result.total, 3)
+        self.assertEqual([row["RegionName"] for row in result.rows], ["CAR", "NCR", "Region I"])
+        self.assertEqual(result.page_size, 10)
+
+    def test_rejects_unknown_table_and_column(self):
+        with self.assertRaisesRegex(ValueError, "Unknown database table"):
+            self.service.get_database_table("secrets")
+        with self.assertRaisesRegex(ValueError, "Unknown sort column"):
+            self.service.get_database_table("dimRegions", sort_by="Password")
+
+    def test_api_is_hidden_when_feature_flag_is_disabled(self):
+        with patch.dict("os.environ", {"ENABLE_DATABASE_BROWSER": "false"}):
+            with self.assertRaises(main.HTTPException) as context:
+                main.require_database_browser()
+        self.assertEqual(context.exception.status_code, 404)
+
+
 class DatasetCacheTests(unittest.TestCase):
     def test_entities_are_fetched_in_parallel(self):
         client = CountingClient(delay=0.03)
