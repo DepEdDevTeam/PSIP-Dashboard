@@ -48,6 +48,8 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 :root {
+  --font-label: 'Helvetica World', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-number: 'Garet', 'Montserrat', 'Avenir Next', Arial, sans-serif;
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -80,6 +82,15 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+}
+
+/* Report typography tokens. The named faces are used automatically when installed
+   or supplied as web fonts; the remaining entries keep safe platform fallbacks. */
+.dashboard-typography {
+  font-family: var(--font-label);
+}
+.font-number {
+  font-family: var(--font-number);
 }
 * {
   border-color: var(--border);
@@ -250,33 +261,65 @@ select {
   outline-offset: -3px;
 }
 .school-map-body {
-  max-height: min(760px, calc(100dvh - 300px));
+  max-height: none;
   min-height: 150px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow-y: visible;
   padding: 16px;
   background: white;
 }
+.school-map-hero {
+  margin: -16px -16px 0;
+  min-height: 168px;
+  padding: 26px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background-color: white;
+  background-position: center;
+  background-size: cover;
+}
+.school-map-hero[data-has-photo='true'] {
+  color: white;
+  background-blend-mode: multiply;
+  background-color: rgba(5, 21, 52, 0.62);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.72);
+}
 .school-map-body h2 {
-  font-size: 18px;
-  font-weight: 700;
-  margin: 0 0 6px;
+  width: 100%;
+  min-width: 0;
+  font-size: 25.6px;
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  font-weight: 800;
+  margin: 0;
   text-align: center;
+  white-space: nowrap;
 }
 .school-map-location {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  color: #526079;
+  margin-top: 9px;
+  color: #647089;
   font-size: 12px;
+  line-height: 1.45;
+  font-weight: 500;
+  text-align: center;
 }
 .school-map-location svg {
   width: 16px;
   height: 16px;
 }
+.school-map-hero[data-has-photo='true'] .school-map-location,
+.school-map-hero[data-has-photo='true'] .school-map-readiness small {
+  color: #f1f5f9;
+}
+.school-map-hero[data-has-photo='true'] .school-map-readiness span {
+  color: white;
+}
 .school-map-readiness {
-  margin: 14px 0;
+  margin: 20px 0 0;
   text-align: center;
 }
 .school-map-readiness > div {

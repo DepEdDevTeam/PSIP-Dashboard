@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useReveals, useEntrance, useDrawer } from '@/lib/animation';
+import { AnimatedNumber } from '@/components/animated-number';
+import SchoolReportDetails from '@/components/school-report-details';
+import { PhotoNavbar, type PhotoSchool } from '@/components/site-photos';
+import { MapFilterToggle } from '@/components/ui/map-filter-toggle';
 import dynamic from 'next/dynamic';
 import {
   createColumnHelper,
@@ -36,6 +41,8 @@ import {
   Monitor,
   Search,
   ShieldAlert,
+  SlidersHorizontal,
+  Flame,
   Wrench,
   X,
 } from 'lucide-react';
@@ -54,7 +61,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { ProjectFilters, SchoolProject } from '@/lib/psip-data';
-import { searchProjects, searchContext } from '@/lib/dashboard-search';
+import {
+  searchProjects,
+  searchContext,
+  searchSuggestions,
+} from '@/lib/dashboard-search';
 import {
   Combobox,
   ComboboxInput,
@@ -92,6 +103,7 @@ const buildingColors = ['#1e5fc4', '#10a779', '#d89a12', '#7c3aed'];
 const col = createColumnHelper<SchoolProject>();
 
 type DashboardView = 'map' | 'report' | 'directory';
+const dashboardViews: DashboardView[] = ['map', 'report', 'directory'];
 export type AnalyticsLens =
   | 'Regional View'
   | 'Building Profile'
@@ -144,7 +156,10 @@ export default function DashboardPage() {
   const [filters, setFilters] = useState<ProjectFilters>(blank);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [view, setView] = useState<DashboardView>('report');
+  const [viewDirection, setViewDirection] = useState(0);
   const [lens, setLens] = useState<AnalyticsLens>('Regional View');
+  const [mapBuildingTypes, setMapBuildingTypes] = useState<string[]>([]);
+  const [mapReadiness, setMapReadiness] = useState<string[]>([]);
   const [projects, setProjects] = useState<SchoolProject[]>([]);
   const [apiOptions, setApiOptions] = useState({
     regions: [] as string[],
@@ -155,6 +170,17 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const viewRef = useEntrance<HTMLDivElement>(`${view}:${loading}`, viewDirection * 20);
+
+  const navigateToView = (nextView: DashboardView) => {
+    if (nextView === view) return;
+    setViewDirection(
+      Math.sign(
+        dashboardViews.indexOf(nextView) - dashboardViews.indexOf(view),
+      ),
+    );
+    setView(nextView);
+  };
 
   useEffect(() => {
     const query = new URLSearchParams(location.search);
@@ -208,6 +234,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const query = new URLSearchParams();
+    const record = new URLSearchParams(location.search).get('record');
+    if (record) query.set('record', record);
     Object.entries(filters).forEach(([key, value]) => {
       if (value) query.set(key === 'buildingType' ? 'building' : key, value);
     });
@@ -216,7 +244,7 @@ export default function DashboardPage() {
     history.replaceState(
       null,
       '',
-      `/dashboard${query.size ? `?${query}` : ''}`,
+      `/dashboard${query.size ? `?${query}` : ''}${location.hash}`,
     );
   }, [filters, lens, view]);
 
@@ -274,6 +302,24 @@ export default function DashboardPage() {
       ),
     [filters, searched],
   );
+  const mapBase = useMemo(
+    () =>
+      searched.filter(
+        (project) =>
+          (!filters.region || project.region === filters.region) &&
+          (!filters.division || project.division === filters.division),
+      ),
+    [filters.division, filters.region, searched],
+  );
+  const mapFiltered = useMemo(() => {
+    if (lens === 'Building Profile' && mapBuildingTypes.length)
+      return mapBase.filter((project) =>
+        mapBuildingTypes.includes(project.buildingType),
+      );
+    if (lens === 'Site Readiness' && mapReadiness.length)
+      return mapBase.filter((project) => mapReadiness.includes(project.readiness));
+    return mapBase;
+  }, [lens, mapBase, mapBuildingTypes, mapReadiness]);
   const buildingData = useMemo(
     () =>
       apiOptions.buildingTypes
@@ -310,7 +356,7 @@ export default function DashboardPage() {
               ]),
             ),
             readiness: Object.fromEntries(
-              ['Ready', 'Pending', 'At risk', 'Unknown'].map((status) => [
+              ['Ready', 'At risk', 'Unknown'].map((status) => [
                 status,
                 rows.filter((project) => project.readiness === status).length,
               ]),
@@ -396,12 +442,12 @@ export default function DashboardPage() {
       col.accessor('name', {
         header: 'School',
         cell: (info) => (
-          <Link
+          <a
             className="font-semibold text-[#164da8] underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1854bd]"
-            href={`/schools/${encodeURIComponent(info.row.original.id)}`}
+            href={`/dashboard?search=${encodeURIComponent(info.row.original.id)}&view=report#school-details`}
           >
             {info.getValue()}
-          </Link>
+          </a>
         ),
       }),
       col.accessor('buildingType', { header: 'Building' }),
@@ -456,10 +502,38 @@ export default function DashboardPage() {
       showRegion
     />
   );
+  const mapActive = active.filter(([key]) =>
+    ['search', 'region', 'division'].includes(key),
+  );
+  const mapFiltersPanel = (
+    <DashboardFilters
+      suggestions={suggestions}
+      filters={filters}
+      active={mapActive}
+      update={update}
+      clear={() => {
+        setFilters(blank);
+        setMapBuildingTypes([]);
+        setMapReadiness([]);
+        setLens('Regional View');
+      }}
+      regions={apiOptions.regions}
+      divisions={availableDivisions}
+      buildingTypes={apiOptions.buildingTypes}
+      showRegion
+      showBuilding={false}
+      showScope={false}
+      mapLayout
+    />
+  );
 
   return (
     <main className="flex h-screen h-dvh min-w-0 flex-col overflow-hidden bg-[#edf2f8] text-[#102044]">
-      <AppHeader view={view} onNavigate={setView} snapshotDate={snapshotDate} />
+      <AppHeader photoSchools={projects.map(p => ({ schoolId: p.id, schoolName: p.name, schoolLocation: [p.municipality, p.division, p.region].filter(Boolean).join(' · ') }))} photoCurrent={filtered.length === 1 ? { schoolId: filtered[0].id, schoolName: filtered[0].name, schoolLocation: [filtered[0].municipality, filtered[0].division, filtered[0].region].filter(Boolean).join(' · ') } : undefined}
+        view={view}
+        onNavigate={navigateToView}
+        snapshotDate={snapshotDate}
+      />
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {loading ? (
           <LoadingState />
@@ -468,61 +542,121 @@ export default function DashboardPage() {
             message={error}
             onRetry={() => setReloadKey((key) => key + 1)}
           />
-        ) : filtered.length === 0 ? (
-          <div className="h-full overflow-auto p-4">
-            {filtersPanel}
-            <Empty onClear={() => setFilters(blank)} />
-          </div>
-        ) : view === 'map' ? (
-          <MapPanel
-            data={filtered}
-            allProjects={projects}
-            controls={filtersPanel}
-            lens={
-              context && context.kind !== 'region' && lens === 'Regional View'
-                ? 'Building Profile'
-                : lens
-            }
-            searchKind={context?.kind}
-            onLensChange={setLens}
-          />
-        ) : view === 'report' ? (
-          <ReportOverview
-            data={filtered}
-            regionData={regionData}
-            buildingData={buildingData}
-            classificationData={classificationData}
-            readinessData={readinessData}
-            buildingTypes={apiOptions.buildingTypes}
-            lens={lens}
-            onLensChange={setLens}
-            filters={filtersPanel}
-            searchHeader={context}
-            selectedRegion={filters.region}
-            selectedDivision={filters.division}
-            update={update}
-          />
         ) : (
-          <DirectoryView
-            table={table}
-            filters={filtersPanel}
-            count={filtered.length}
-          />
+          <div
+              ref={viewRef}
+              className="absolute inset-0 min-h-0 overflow-hidden"
+            >
+              {(view === 'map' ? mapFiltered : filtered).length === 0 ? (
+                <div className="h-full overflow-auto p-4">
+                  {view === 'map' ? mapFiltersPanel : filtersPanel}
+                  <Empty
+                    onClear={() => {
+                      setFilters(blank);
+                      if (view === 'map') {
+                        setMapBuildingTypes([]);
+                        setMapReadiness([]);
+                        setLens('Regional View');
+                      }
+                    }}
+                  />
+                </div>
+              ) : view === 'map' ? (
+                <MapPanel
+                  data={mapFiltered}
+                  allProjects={projects}
+                  controls={mapFiltersPanel}
+                  lens={
+                    context &&
+                    context.kind !== 'region' &&
+                    lens === 'Regional View'
+                      ? 'Building Profile'
+                      : lens
+                  }
+                  searchKind={context?.kind}
+                  onLensChange={setLens}
+                  buildingTypes={apiOptions.buildingTypes}
+                  selectedBuildingTypes={mapBuildingTypes}
+                  selectedReadiness={mapReadiness}
+                  onToggleBuilding={(buildingType) => {
+                    setMapReadiness([]);
+                    const removingLast =
+                      mapBuildingTypes.length === 1 &&
+                      mapBuildingTypes.includes(buildingType);
+                    setLens(
+                      removingLast ? 'Regional View' : 'Building Profile',
+                    );
+                    setMapBuildingTypes((current) =>
+                      current.includes(buildingType)
+                        ? current.filter((item) => item !== buildingType)
+                        : [...current, buildingType],
+                    );
+                  }}
+                  onToggleReadiness={(readiness) => {
+                    setMapBuildingTypes([]);
+                    const removingLast =
+                      mapReadiness.length === 1 &&
+                      mapReadiness.includes(readiness);
+                    setLens(
+                      removingLast ? 'Regional View' : 'Site Readiness',
+                    );
+                    setMapReadiness((current) =>
+                      current.includes(readiness)
+                        ? current.filter((item) => item !== readiness)
+                        : [...current, readiness],
+                    );
+                  }}
+                  onToggleHeatmap={() => {
+                    const enable = lens !== 'At-risk Heatmap';
+                    setMapBuildingTypes([]);
+                    setMapReadiness([]);
+                    setLens(
+                      enable ? 'At-risk Heatmap' : 'Regional View',
+                    );
+                  }}
+                />
+              ) : view === 'report' ? (
+                <ReportOverview
+                  data={filtered}
+                  regionData={regionData}
+                  buildingData={buildingData}
+                  classificationData={classificationData}
+                  readinessData={readinessData}
+                  buildingTypes={apiOptions.buildingTypes}
+                  lens={lens}
+                  onLensChange={setLens}
+                  filters={filtersPanel}
+                  searchHeader={context}
+                  selectedRegion={filters.region}
+                  selectedDivision={filters.division}
+                  update={update}
+                />
+              ) : (
+                <DirectoryView
+                  table={table}
+                  filters={filtersPanel}
+                  count={filtered.length}
+                />
+              )}
+            </div>
         )}
       </div>
     </main>
   );
 }
 
-function AppHeader({
+function AppHeader({ photoSchools, photoCurrent,
   view,
   onNavigate,
   snapshotDate,
 }: {
+  photoSchools: PhotoSchool[]; photoCurrent?: PhotoSchool;
   view: DashboardView;
   onNavigate: (view: DashboardView) => void;
   snapshotDate: string | null;
 }) {
+  const headerRef = useEntrance<HTMLElement>();
+  const navRef = useReveals<HTMLElement>(view, '[aria-current="page"] > [aria-hidden="true"]');
   const formatted = snapshotDate
     ? new Intl.DateTimeFormat('en-PH', {
         day: '2-digit',
@@ -536,11 +670,11 @@ function AppHeader({
     { value: 'directory' as const, label: 'Directory', short: 'Directory' },
   ];
   return (
-    <header className="z-20 shrink-0 bg-[#0b245f] text-white shadow-lg">
+    <header ref={headerRef} className="z-20 shrink-0 bg-[#0b245f] text-white shadow-lg">
       <div className="flex min-h-16 items-center justify-between gap-3 px-4 py-2 lg:px-6">
         <Link
-          href="/dashboard"
-          onClick={() => onNavigate('report')}
+          href="/"
+          aria-label="PPP Dashboard home"
           className="flex shrink-0 items-center gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           <div className="grid size-9 place-items-center rounded-xl bg-white text-[#123b8f]">
@@ -554,6 +688,7 @@ function AppHeader({
           </div>
         </Link>
         <nav
+          ref={navRef}
           className="flex items-center gap-1 rounded-xl bg-white/10 p-1"
           aria-label="Dashboard views"
         >
@@ -563,15 +698,23 @@ function AppHeader({
               type="button"
               aria-current={view === item.value ? 'page' : undefined}
               onClick={() => onNavigate(item.value)}
-              className={`min-h-10 rounded-lg px-2 py-2 text-xs font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:px-3 sm:text-sm ${view === item.value ? 'bg-white text-[#123b8f] shadow-sm' : 'text-blue-100 hover:bg-white/15'}`}
+              className={`relative min-h-10 overflow-hidden rounded-lg px-2 py-2 text-xs font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:px-3 sm:text-sm ${view === item.value ? 'text-[#123b8f]' : 'text-blue-100 hover:bg-white/15'}`}
             >
-              <span className="sm:hidden">{item.short}</span>
-              <span className="hidden sm:inline">{item.label}</span>
+              {view === item.value && (
+                <span
+                  className="absolute inset-0 rounded-lg bg-white shadow-sm"
+                  aria-hidden="true"
+                />
+              )}
+              <span className="relative z-10 sm:hidden">{item.short}</span>
+              <span className="relative z-10 hidden sm:inline">
+                {item.label}
+              </span>
             </button>
           ))}
-        </nav>
+        <PhotoNavbar schools={photoSchools} current={photoCurrent} /></nav>
         <div className="hidden shrink-0 text-right lg:block">
-          <p className="text-[10px] text-blue-200">Fabric snapshot</p>
+          <p className="text-[10px] text-blue-200">Date as of</p>
           <p className="text-xs font-semibold">{formatted}</p>
         </div>
       </div>
@@ -589,6 +732,9 @@ function DashboardFilters({
   divisions,
   buildingTypes,
   showRegion,
+  showBuilding = true,
+  showScope = true,
+  mapLayout = false,
 }: {
   suggestions: string[];
   filters: ProjectFilters;
@@ -599,25 +745,19 @@ function DashboardFilters({
   divisions: string[];
   buildingTypes: string[];
   showRegion: boolean;
+  showBuilding?: boolean;
+  showScope?: boolean;
+  mapLayout?: boolean;
 }) {
   return (
     <div aria-label="Dashboard filters">
       <div
-        className={`grid min-w-0 grid-cols-2 gap-2 max-[359px]:grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${showRegion ? 'xl:grid-cols-[minmax(240px,1.5fr)_repeat(4,minmax(132px,1fr))_auto]' : 'xl:grid-cols-[minmax(240px,1.5fr)_repeat(3,minmax(140px,1fr))_auto]'}`}
+        className={`grid min-w-0 grid-cols-2 gap-2 max-[359px]:grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${mapLayout ? 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]' : !showBuilding && !showScope ? 'xl:grid-cols-[minmax(300px,1.5fr)_minmax(150px,.65fr)_minmax(170px,.85fr)_auto]' : showRegion ? 'xl:grid-cols-[minmax(240px,1.5fr)_repeat(4,minmax(132px,1fr))_auto]' : 'xl:grid-cols-[minmax(240px,1.5fr)_repeat(3,minmax(140px,1fr))_auto]'}`}
       >
-        <div className="relative col-span-2 min-w-0 max-[359px]:col-span-1 lg:col-span-3 xl:col-span-1">
+        <div className={`relative col-span-2 min-w-0 max-[359px]:col-span-1 lg:col-span-3 ${mapLayout ? 'xl:col-span-3' : 'xl:col-span-1'}`}>
           <Combobox<string>
-            items={
-              filters.search.trim()
-                ? suggestions
-                    .filter((item) =>
-                      item
-                        .toLowerCase()
-                        .includes(filters.search.trim().toLowerCase()),
-                    )
-                    .slice(0, 30)
-                : []
-            }
+            items={searchSuggestions(suggestions, filters.search)}
+            filter={null}
             inputValue={filters.search}
             onInputValueChange={(value) => update('search', value)}
             onValueChange={(value) => {
@@ -628,7 +768,7 @@ function DashboardFilters({
               aria-label="Search schools, school IDs, divisions, or regions"
               placeholder="Search school, ID, division, or region"
               showTrigger={false}
-              className="h-11 w-full rounded-xl bg-white"
+              className={`h-11 w-full rounded-xl bg-white ${mapLayout ? 'pr-12' : ''}`}
             />
             <ComboboxContent>
               <ComboboxList>
@@ -640,6 +780,13 @@ function DashboardFilters({
               </ComboboxList>
             </ComboboxContent>
           </Combobox>
+          {mapLayout && (
+            <Search
+              className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#173f7d]"
+              strokeWidth={2.25}
+              aria-hidden="true"
+            />
+          )}
         </div>
         {showRegion && (
           <FilterSelect
@@ -655,18 +802,22 @@ function DashboardFilters({
           onChange={(value) => update('division', value)}
           options={divisions}
         />
-        <FilterSelect
-          label="Building"
-          value={filters.buildingType}
-          onChange={(value) => update('buildingType', value)}
-          options={buildingTypes}
-        />
-        <FilterSelect
-          label="Project scope"
-          value={filters.scope}
-          onChange={(value) => update('scope', value)}
-          options={['Demolition', 'Site improvement', 'Slope protection']}
-        />
+        {showBuilding && (
+          <FilterSelect
+            label="Building"
+            value={filters.buildingType}
+            onChange={(value) => update('buildingType', value)}
+            options={buildingTypes}
+          />
+        )}
+        {showScope && (
+          <FilterSelect
+            label="Project scope"
+            value={filters.scope}
+            onChange={(value) => update('scope', value)}
+            options={['Demolition', 'Site improvement', 'Slope protection']}
+          />
+        )}
         <button
           type="button"
           onClick={clear}
@@ -774,7 +925,12 @@ function MapPanel({
   allProjects,
   controls,
   lens,
-  onLensChange,
+  buildingTypes,
+  selectedBuildingTypes,
+  selectedReadiness,
+  onToggleBuilding,
+  onToggleReadiness,
+  onToggleHeatmap,
 }: {
   searchKind?: string;
   data: SchoolProject[];
@@ -782,26 +938,35 @@ function MapPanel({
   controls: React.ReactNode;
   lens: AnalyticsLens;
   onLensChange: (lens: AnalyticsLens) => void;
+  buildingTypes: string[];
+  selectedBuildingTypes: string[];
+  selectedReadiness: string[];
+  onToggleBuilding: (value: string) => void;
+  onToggleReadiness: (value: string) => void;
+  onToggleHeatmap: () => void;
 }) {
+  const [panelOpen, setPanelOpen] = useState(false);
+  const mapFeedbackRef = useEntrance<HTMLDivElement>(JSON.stringify([lens, selectedBuildingTypes, selectedReadiness, data.length]));
+
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const timer = window.setTimeout(() => setPanelOpen(desktop.matches), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
     <article className="relative flex h-full min-h-0 flex-col overflow-x-hidden overflow-y-auto bg-[#dce5ef] sm:overflow-hidden">
-      <div className="relative z-10 mx-2 mt-2 shrink-0 overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-[0_8px_24px_rgba(21,48,93,.12)] backdrop-blur sm:mx-3 sm:mt-3">
-        <div className="p-3">{controls}</div>
-        <div className="flex flex-col gap-3 border-t border-[#e2e8f0] px-3 py-3 sm:px-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="min-w-0 xl:max-w-[42%]">
-            <p className="text-[10px] font-bold uppercase tracking-[.13em] text-[#2366dc]">
-              {lens}
-            </p>
-            <h1 className="mt-1 text-base font-bold leading-6 sm:text-lg">
-              {lens === 'Regional View'
-                ? 'Regional readiness across the Philippines'
-                : lens === 'At-risk Heatmap'
-                  ? 'At-risk project density across the Philippines'
-                  : 'School sites across the Philippines'}
-            </h1>
+      <div ref={mapFeedbackRef} className="relative z-10 mx-2 mt-2 shrink-0 rounded-2xl border border-white/70 bg-white/95 p-4 shadow-[0_8px_24px_rgba(21,48,93,.12)] backdrop-blur sm:mx-3 sm:mt-3 lg:grid lg:grid-cols-[minmax(280px,.8fr)_minmax(520px,1.2fr)] lg:items-center lg:gap-8 lg:p-5">
+        <div className="mb-4 min-w-0 lg:mb-0">
+          <div className="inline-flex items-center gap-2 rounded-full bg-[#e9f7fb] px-3 py-1.5 text-sm font-bold text-[#2366dc]">
+            <MapPinned className="size-4" aria-hidden="true" />
+            Map Overview
           </div>
-          <LensControl value={lens} onChange={onLensChange} />
+          <h1 className="mt-3 text-xl font-bold tracking-tight sm:text-2xl lg:text-3xl">
+            PPP Projects across the Philippines
+          </h1>
         </div>
+        <div className="min-w-0">{controls}</div>
       </div>
       <div className="relative mt-2 min-h-[420px] flex-1 bg-[#dce5ef] sm:absolute sm:inset-0 sm:mt-0 sm:min-h-0">
         <PsipMap
@@ -810,18 +975,186 @@ function MapPanel({
           view={lens}
           searchKind={searchKind}
         />
-        <MapLegend data={data} lens={lens} />
+        <MapLegend lens={lens} />
+        <div className="absolute left-4 top-[228px] z-[520] sm:top-[190px]">
+          <div className="group relative">
+            <button
+              type="button"
+              aria-expanded={panelOpen}
+              aria-controls="map-filter-panel"
+              aria-label={panelOpen ? 'Hide map filters' : 'Show map filters'}
+              title={panelOpen ? 'Hide map filters' : 'Find projects'}
+              onClick={() => setPanelOpen((open) => !open)}
+              className="grid size-14 touch-manipulation place-items-center rounded-2xl border border-white/80 bg-white text-[#173a70] shadow-[0_12px_30px_rgba(21,48,93,.18)] transition hover:bg-[#f5f8fc] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1854bd] active:scale-95"
+            >
+              {panelOpen ? (
+                <X className="size-6" aria-hidden="true" />
+              ) : (
+                <SlidersHorizontal className="size-6" aria-hidden="true" />
+              )}
+            </button>
+            {!panelOpen && (
+              <span className="pointer-events-none absolute left-[calc(100%+.65rem)] top-1/2 hidden -translate-y-1/2 whitespace-nowrap rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#526079] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 lg:block">
+                Find projects
+              </span>
+            )}
+          </div>
+        </div>
+        <MapFilterPanel
+            open={panelOpen}
+            buildingTypes={buildingTypes}
+            selectedBuildingTypes={selectedBuildingTypes}
+            selectedReadiness={selectedReadiness}
+            heatmapActive={lens === 'At-risk Heatmap'}
+            onToggleBuilding={onToggleBuilding}
+            onToggleReadiness={onToggleReadiness}
+            onToggleHeatmap={onToggleHeatmap}
+            onClose={() => {
+              setPanelOpen(false);
+              document.querySelector<HTMLButtonElement>('[aria-controls="map-filter-panel"]')?.focus();
+            }}
+          />
       </div>
     </article>
   );
 }
-function MapLegend({
-  data,
-  lens,
+
+function buildingColor(name: string, index: number) {
+  const normalized = name.toLowerCase();
+  if (normalized.includes('low')) return '#f5b700';
+  if (normalized.includes('mid')) return '#10a779';
+  if (normalized.includes('high')) return '#1e5fc4';
+  return buildingColors[index % buildingColors.length];
+}
+
+function MapFilterPanel({
+  open,
+  buildingTypes,
+  selectedBuildingTypes,
+  selectedReadiness,
+  heatmapActive,
+  onToggleBuilding,
+  onToggleReadiness,
+  onToggleHeatmap,
+  onClose,
 }: {
-  data: SchoolProject[];
-  lens: AnalyticsLens;
+  open: boolean;
+  buildingTypes: string[];
+  selectedBuildingTypes: string[];
+  selectedReadiness: string[];
+  heatmapActive: boolean;
+  onToggleBuilding: (value: string) => void;
+  onToggleReadiness: (value: string) => void;
+  onToggleHeatmap: () => void;
+  onClose: () => void;
 }) {
+  const readinessItems = ['Ready'] as const;
+  const orderedBuildingTypes = [...buildingTypes].sort((a, b) => {
+    const order = ['high', 'mid', 'low'];
+    const rank = (value: string) => {
+      const index = order.findIndex((type) => value.toLowerCase().includes(type));
+      return index === -1 ? order.length : index;
+    };
+    return rank(a) - rank(b);
+  });
+  const drawerRef = useDrawer(open);
+  return (
+    <aside
+      ref={drawerRef}
+      inert={!open}
+      aria-hidden={!open}
+      style={{ display: 'none' }}
+      id="map-filter-panel"
+      aria-label="Map display filters"
+      className="absolute inset-x-3 bottom-3 z-[510] max-h-[min(70dvh,560px)] overflow-y-auto rounded-2xl border border-white/80 bg-white/95 p-4 shadow-[0_18px_45px_rgba(21,48,93,.22)] backdrop-blur lg:inset-x-auto lg:bottom-auto lg:left-[84px] lg:top-[190px] lg:w-[272px]"
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-[#d9e2ee] pb-3">
+        <div className="flex items-center gap-3">
+          <SlidersHorizontal className="size-5 text-[#1854bd]" aria-hidden="true" />
+          <div>
+            <h2 className="text-lg font-bold">Find projects</h2>
+            <p className="text-xs text-[#647089]">Choose one map category</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close map filters"
+          className="grid size-11 place-items-center rounded-xl text-[#526079] hover:bg-[#eef3fa] focus-visible:outline-2 focus-visible:outline-[#1854bd] lg:hidden"
+        >
+          <X className="size-5" aria-hidden="true" />
+        </button>
+      </div>
+      <FilterToggleGroup
+        title="Building Profile"
+        items={orderedBuildingTypes.map((name, index) => ({
+          name,
+          color: buildingColor(name, index),
+        }))}
+        selected={selectedBuildingTypes}
+        onToggle={onToggleBuilding}
+      />
+      <FilterToggleGroup
+        title="Site Readiness"
+        items={readinessItems.map((name) => ({
+          name,
+          color: readinessColor[name],
+        }))}
+        selected={selectedReadiness}
+        onToggle={onToggleReadiness}
+        hideLabels
+      />
+      <div className="mt-4">
+        <p className="mb-2 text-sm font-bold text-[#34445f]">Risk Heatmap</p>
+        <MapFilterToggle
+          label="At-risk density"
+          hideLabel
+          checked={heatmapActive}
+          onToggle={onToggleHeatmap}
+          color="#c83f50"
+          icon={Flame}
+        />
+      </div>
+    </aside>
+  );
+}
+
+function FilterToggleGroup({
+  title,
+  items,
+  selected,
+  onToggle,
+  hideLabels = false,
+}: {
+  title: string;
+  items: { name: string; color: string }[];
+  selected: string[];
+  onToggle: (value: string) => void;
+  hideLabels?: boolean;
+}) {
+  return (
+    <fieldset className="mt-4">
+      <legend className="mb-2 text-sm font-bold text-[#34445f]">{title}</legend>
+      <div className="space-y-1">
+        {items.map((item) => {
+          const active = selected.includes(item.name);
+          return (
+            <MapFilterToggle
+              key={item.name}
+              label={item.name}
+              checked={active}
+              onToggle={() => onToggle(item.name)}
+              color={item.color}
+              hideLabel={hideLabels}
+              icon={title === 'Building Profile' ? (item.name.toLowerCase().includes('low') ? Home : Building2) : item.name === 'Ready' ? CheckCircle2 : item.name === 'Pending' ? Clock3 : item.name === 'At risk' ? ShieldAlert : Activity}
+            />
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+function MapLegend({ lens }: { lens: AnalyticsLens }) {
   if (lens === 'Regional View')
     return (
       <div className="pointer-events-none absolute bottom-4 left-4 z-[500] flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-xl border bg-white/95 px-3 py-2 text-xs font-medium text-[#526079] shadow-sm">
@@ -846,31 +1179,7 @@ function MapLegend({
         Lower to higher at-risk density
       </div>
     );
-  const items =
-    lens === 'Site Readiness'
-      ? ['Ready', 'Pending', 'At risk', 'Unknown'].map((name) => ({
-          name,
-          color: readinessColor[name as keyof typeof readinessColor],
-        }))
-      : Array.from(new Set(data.map((project) => project.buildingType))).map(
-          (name, index) => ({
-            name,
-            color: buildingColors[index % buildingColors.length],
-          }),
-        );
-  return (
-    <div className="pointer-events-none absolute bottom-4 left-4 z-[500] flex max-w-[calc(100%-2rem)] flex-wrap gap-x-3 gap-y-1 rounded-xl border bg-white/95 px-3 py-2 text-xs font-medium text-[#526079] shadow-sm">
-      {items.map((item) => (
-        <span key={item.name} className="inline-flex items-center gap-1.5">
-          <span
-            className="inline-block size-2 rounded-full"
-            style={{ background: item.color }}
-          />
-          {item.name}
-        </span>
-      ))}
-    </div>
-  );
+  return null;
 }
 
 function ReportOverview({
@@ -917,8 +1226,10 @@ function ReportOverview({
     sites = uniqueSites(data),
     ready = readinessData.find((item) => item.name === 'Ready')?.value || 0,
     readyRate = data.length ? Math.round((ready / data.length) * 100) : 0;
+  const revealRevision = useMemo(() => ({ data, reportLens }), [data, reportLens]);
+  const reportRef = useReveals<HTMLDivElement>(revealRevision);
   return (
-    <div className="h-full overflow-y-auto bg-[#edf2f8]">
+    <div ref={reportRef} className="dashboard-typography h-full overflow-y-auto bg-[#edf2f8]">
       <div className="mx-auto max-w-[1500px] space-y-4 px-4 py-4 lg:px-6 lg:py-6">
         <section className="overflow-hidden rounded-2xl border border-[#d9e2ee] bg-white shadow-[0_8px_24px_rgba(21,48,93,.06)]">
           <div className="p-4">{filters}</div>
@@ -957,13 +1268,13 @@ function ReportOverview({
           </div>
         </section>
         <section
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
           aria-label="Portfolio summary"
         >
           <MetricCard
             label="Classrooms"
             value={classrooms}
-            detail={`${academic ? number.format(academic) : '—'} academic rooms`}
+            detail="Academic Rooms"
             icon={GraduationCap}
             color="#1e5fc4"
           />
@@ -975,16 +1286,16 @@ function ReportOverview({
             color="#7c3aed"
           />
           <MetricCard
-            label="School sites"
-            value={sites}
-            detail={`${number.format(data.length)} visible project records`}
+            label="Projects"
+            value={data.length}
+            detail={`implemented in ${number.format(sites)} school sites`}
             icon={MapPinned}
             color="#0b8b69"
           />
           <MetricCard
             label="Ready to operate"
             value={`${readyRate}%`}
-            detail={`${number.format(ready)} ready records`}
+            detail={`${number.format(ready)} operational projects`}
             icon={CheckCircle2}
             color="#14855f"
           />
@@ -1034,27 +1345,27 @@ function MetricCard({
 }) {
   const numeric = typeof value === 'number';
   return (
-    <article className="relative overflow-hidden rounded-2xl border border-[#d9e2ee] bg-white p-5 shadow-[0_8px_24px_rgba(21,48,93,.05)]">
+    <article data-reveal="kpi" className="transition-shadow hover:shadow-[0_12px_30px_rgba(21,48,93,.12)] relative min-h-[154px] overflow-hidden rounded-[20px] border border-[#d9e2ee] bg-white p-6 shadow-[0_8px_24px_rgba(21,48,93,.05)]">
       <div
         className="absolute inset-y-0 left-0 w-1"
         style={{ background: color }}
       />
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-semibold text-[#526079]">{label}</p>
+      <div className="flex items-start justify-between gap-5">
+        <div className="min-w-0">
+          <p className="text-base font-semibold text-[#526079]">{label}</p>
           <p
-            className="mt-2 text-3xl font-bold tabular-nums text-[#102044]"
+            className="font-number mt-2 text-4xl font-bold leading-none tabular-nums text-[#102044]"
             title={numeric ? number.format(value) : undefined}
           >
-            {numeric ? number.format(value) : value}
+            <AnimatedNumber value={value} />
           </p>
-          <p className="mt-2 text-xs leading-5 text-[#69768d]">{detail}</p>
+          <p className="mt-4 text-sm leading-5 text-[#69768d]">{detail}</p>
         </div>
         <div
-          className="grid size-11 shrink-0 place-items-center rounded-xl"
+          className="grid size-13 shrink-0 place-items-center rounded-2xl"
           style={{ background: `${color}16`, color }}
         >
-          <Icon className="size-5" strokeWidth={1.8} aria-hidden="true" />
+          <Icon className="size-6" strokeWidth={1.8} aria-hidden="true" />
         </div>
       </div>
     </article>
@@ -1119,18 +1430,21 @@ function BuildingReport({
   const buildingChartData = (
     selectedDivision ? buildingData : comparisonData
   ) as Array<Record<string, string | number>>;
+  const buildingTotal = buildingData.reduce((sum, item) => sum + item.value, 0);
   return (
     <div className="space-y-4">
-      <section className="grid gap-4 xl:grid-cols-[minmax(340px,.62fr)_minmax(0,1.38fr)]">
-        <ChartCard
-          eyebrow="Building portfolio"
-          title="Projects by building type"
-          description="Select a segment or legend item to filter the full dashboard."
-        >
-          <div className="grid items-center sm:grid-cols-[1fr_180px] xl:grid-cols-1 2xl:grid-cols-[1fr_180px]">
+      <ClassificationPanel data={classificationData} />
+      {data.length > 0 && data.every((project) => project.id === data[0].id) ? (
+        <SchoolReportDetails key={data[0].id} schoolId={data[0].id} />
+      ) : (
+        <section className="grid items-stretch gap-4 xl:grid-cols-[minmax(380px,.52fr)_minmax(0,1.48fr)]">
+          <ChartCard
+            eyebrow="Building portfolio"
+            title="Projects by building type"
+          >
             <ChartContainer
               config={{ value: { label: 'Projects' } }}
-              className="h-[250px] w-full"
+              className="mt-4 h-[300px] w-full"
               aria-label="Donut chart of projects by building type"
             >
               <PieChart accessibilityLayer>
@@ -1138,9 +1452,32 @@ function BuildingReport({
                   data={buildingData}
                   dataKey="value"
                   nameKey="name"
+                  cx="48%"
                   innerRadius={58}
                   outerRadius={90}
-                  paddingAngle={3}
+                  paddingAngle={1}
+                  labelLine={false}
+                  label={({ cx, cy, midAngle, outerRadius, value, fill }) => {
+                    const angle = -(Number(midAngle) * Math.PI) / 180;
+                    const direction = Math.cos(angle);
+                    const x = Number(cx) + direction * (Number(outerRadius) + 18);
+                    const y = Number(cy) + Math.sin(angle) * (Number(outerRadius) + 24);
+                    const percent = buildingTotal
+                      ? Math.round((Number(value) / buildingTotal) * 1000) / 10
+                      : 0;
+                    return (
+                      <text
+                        x={x}
+                        y={y}
+                        fill={String(fill || '#526079')}
+                        fontSize={12}
+                        textAnchor={direction >= 0 ? 'start' : 'end'}
+                        dominantBaseline="central"
+                      >
+                        {`${percent}%`}
+                      </text>
+                    );
+                  }}
                   onClick={(item) => {
                     const name = String(item.name ?? '');
                     if (name) onSelect(name);
@@ -1149,13 +1486,13 @@ function BuildingReport({
                 <ChartTooltip content={<ChartTooltipContent hideLabel />} />
               </PieChart>
             </ChartContainer>
-            <div className="space-y-2">
+            <div className="mt-2 flex flex-wrap justify-center gap-x-5 gap-y-2">
               {buildingData.map((item) => (
                 <button
                   type="button"
                   key={item.name}
                   onClick={() => onSelect(item.name)}
-                  className="flex min-h-10 w-full items-center justify-between rounded-lg px-2 text-sm hover:bg-[#f1f5fa] focus-visible:outline-2 focus-visible:outline-[#1854bd]"
+                  className="flex min-h-9 items-center rounded-lg px-2 text-sm hover:bg-[#f1f5fa] focus-visible:outline-2 focus-visible:outline-[#1854bd]"
                 >
                   <span className="flex items-center">
                     <span
@@ -1164,80 +1501,64 @@ function BuildingReport({
                     />
                     {item.name}
                   </span>
-                  <b className="tabular-nums">{number.format(item.value)}</b>
                 </button>
               ))}
             </div>
-          </div>
-        </ChartCard>
-        <ClassificationPanel data={classificationData} />
-      </section>
-      <ChartCard
-        eyebrow={
-          selectedDivision
-            ? 'Division detail'
-            : selectedRegion
-              ? 'Division comparison'
-              : ''
-        }
-        title={
-          selectedDivision
-            ? `Building types in ${selectedDivision}`
-            : `Building types by ${comparisonLabel}`
-        }
-        description={
-          selectedDivision
-            ? 'Project totals for each building type in the selected division.'
-            : `Ranked by total projects, the grouped bars show how each building type is distributed across ${comparisonLabel}s.`
-        }
-      >
-        <ChartContainer
-          config={Object.fromEntries(
-            buildingTypes.map((type, index) => [
-              type,
-              {
-                label: type,
-                color: buildingColors[index % buildingColors.length],
-              },
-            ]),
-          )}
-          className="h-[430px] w-full"
-          aria-label={
-            selectedDivision
-              ? `Bar chart of building types in ${selectedDivision}`
-              : `Grouped bar chart comparing building types across ${comparisonLabel}s`
-          }
-        >
-          <BarChart
-            data={buildingChartData}
-            margin={{ left: 8, right: 8 }}
-            accessibilityLayer
+          </ChartCard>
+          <ChartCard
+            eyebrow={selectedDivision ? 'Division detail' : selectedRegion ? 'Division comparison' : ''}
+            title={selectedDivision ? `Building types in ${selectedDivision}` : `Building types by ${comparisonLabel}`}
+            description={selectedDivision ? 'Project totals for each building type in the selected division.' : `Ranked by total projects, the grouped bars show how each building type is distributed across ${comparisonLabel}s.`}
           >
-            <CartesianGrid vertical={false} stroke="#e3e9f1" />
-            <XAxis
-              dataKey={selectedDivision ? 'name' : 'label'}
-              interval={0}
-              angle={-32}
-              textAnchor="end"
-              height={78}
-            />
-            <YAxis allowDecimals={false} />
-            <ChartTooltip content={<ChartTooltipContent />} />
-            {selectedDivision ? (
-              <Bar dataKey="value" fill="#1e5fc4" radius={[3, 3, 0, 0]} />
-            ) : (
-              buildingTypes.map((type, index) => (
-                <Bar
-                  key={type}
-                  dataKey={type}
-                  fill={buildingColors[index % buildingColors.length]}
-                  radius={[3, 3, 0, 0]}
-                />
-              ))
+          <ChartContainer
+            config={Object.fromEntries(
+              buildingTypes.map((type, index) => [
+                type,
+                {
+                  label: type,
+                  color: buildingColors[index % buildingColors.length],
+                },
+              ]),
             )}
-          </BarChart>
-        </ChartContainer>
-      </ChartCard>
+            className="h-[380px] w-full"
+            aria-label={
+              selectedDivision
+                ? `Bar chart of building types in ${selectedDivision}`
+                : `Grouped bar chart comparing building types across ${comparisonLabel}s`
+            }
+          >
+            <BarChart
+              data={buildingChartData}
+              margin={{ left: 8, right: 8 }}
+              accessibilityLayer
+            >
+              <CartesianGrid vertical={false} stroke="#e3e9f1" />
+              <XAxis
+                dataKey={selectedDivision ? 'name' : 'label'}
+                interval={0}
+                angle={-32}
+                textAnchor="end"
+                height={78}
+              />
+              <YAxis allowDecimals={false} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              {selectedDivision ? (
+                <Bar dataKey="value" fill="#1e5fc4" radius={[3, 3, 0, 0]} />
+              ) : (
+                buildingTypes.map((type, index) => (
+                  <Bar
+                    key={type}
+                    dataKey={type}
+                    fill={buildingColors[index % buildingColors.length]}
+                    radius={[3, 3, 0, 0]}
+                  />
+                ))
+              )}
+            </BarChart>
+          </ChartContainer>
+          </ChartCard>
+        </section>
+      )}
     </div>
   );
 }
@@ -1250,37 +1571,37 @@ function ClassificationPanel({
   return (
     <section
       aria-label="Classroom classification"
-      className="overflow-hidden rounded-2xl border border-[#d9e2ee] bg-white shadow-[0_8px_24px_rgba(21,48,93,.05)]"
+      className="overflow-hidden rounded-[28px] border border-[#d9e2ee] bg-white shadow-[0_8px_24px_rgba(21,48,93,.05)]"
     >
-      <div className="border-b border-[#e2e8f0] px-5 py-4">
-        <p className="text-xs font-bold uppercase tracking-[.13em] text-[#2366dc]">
-          Portfolio mix
-        </p>
-        <h2 className="mt-1 text-xl font-bold">Classrooms classification</h2>
-        <p className="mt-1 text-sm text-[#647089]">
-          Live totals from the current filter selection.
-        </p>
+      <div className="flex items-center justify-between gap-4 border-b border-[#e2e8f0] px-6 py-4">
+        <div>
+          <h2 className="text-xl font-bold">Classrooms classification</h2>
+          <p className="mt-1 text-sm text-[#647089]">Live totals from the current filter selection.</p>
+        </div>
+        <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#e8f0fc] text-[#1854bd]">
+          <GraduationCap className="size-5" strokeWidth={1.8} aria-hidden="true" />
+        </div>
       </div>
-      <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 p-6 sm:grid-cols-2 xl:grid-cols-3">
         {data.map(({ name, value, icon: Icon }) => (
           <article
             key={name}
-            className="rounded-xl border border-[#e1e7ef] bg-[#fbfcfe] p-3"
+            className="rounded-[24px] border border-[#e1e7ef] bg-[#fbfcfe] p-5"
           >
             <div className="flex items-center gap-3">
-              <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-[#e8f0fc] text-[#1854bd]">
-                <Icon className="size-5" strokeWidth={1.7} aria-hidden="true" />
+              <div className="grid size-14 shrink-0 place-items-center rounded-2xl bg-[#e8f0fc] text-[#1854bd]">
+                <Icon className="size-6" strokeWidth={1.7} aria-hidden="true" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold leading-4 text-[#526079]">
+                <p className="text-base font-semibold leading-5 text-[#526079]">
                   {name}
                 </p>
-                <b className="mt-1 block text-lg tabular-nums text-[#102044]">
+                <b className="font-number mt-2 block text-2xl tabular-nums text-[#102044]">
                   {number.format(value)}
                 </b>
               </div>
             </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#e8edf4]">
+            <div className="mt-5 h-3 overflow-hidden rounded-full bg-[#e8edf4]">
               <span
                 className="block h-full rounded-full bg-[#1e5fc4]"
                 style={{
@@ -1354,7 +1675,7 @@ function ReadinessReport({
     selectedDivision ? statusDetailData : comparisonData
   ) as Array<Record<string, string | number>>;
   return (
-    <section className="grid gap-4 xl:grid-cols-[minmax(340px,.62fr)_minmax(0,1.38fr)]">
+    <section className={data.length > 0 && data.every(project => project.id === data[0].id) ? "space-y-4" : "grid gap-4 xl:grid-cols-[minmax(340px,.62fr)_minmax(0,1.38fr)]"}>
       <article className="overflow-hidden rounded-2xl bg-[#0d2d70] p-5 text-white shadow-[0_14px_30px_rgba(11,36,95,.16)]">
         <p className="text-xs font-bold uppercase tracking-[.13em] text-blue-200">
           Operational readiness
@@ -1398,92 +1719,96 @@ function ReadinessReport({
           ))}
         </div>
       </article>
-      <ChartCard
-        eyebrow={
-          selectedDivision
-            ? 'Division detail'
-            : selectedRegion
-              ? 'Division comparison'
-              : ''
-        }
-        title={
-          selectedDivision
-            ? `Readiness status in ${selectedDivision}`
-            : `Readiness status by ${comparisonLabel}`
-        }
-        description={
-          selectedDivision
-            ? 'Record totals for each readiness status in the selected division.'
-            : 'Ranked by total projects, each bar shows the mix of ready, pending, at-risk, and unclassified records.'
-        }
-      >
-        <ChartContainer
-          config={{
-            Ready: { label: 'Ready', color: readinessColor.Ready },
-            Pending: { label: 'Pending', color: readinessColor.Pending },
-            'At risk': { label: 'At risk', color: readinessColor['At risk'] },
-            Unknown: { label: 'Unknown', color: readinessColor.Unknown },
-          }}
-          className="h-[470px] w-full"
-          aria-label={
+      {data.length > 0 && data.every((project) => project.id === data[0].id) ? (
+        <SchoolReportDetails key={data[0].id} schoolId={data[0].id} />
+      ) : (
+        <ChartCard
+          eyebrow={
             selectedDivision
-              ? `Bar chart of readiness status in ${selectedDivision}`
-              : `Stacked horizontal bar chart comparing operational readiness by ${comparisonLabel}`
+              ? 'Division detail'
+              : selectedRegion
+                ? 'Division comparison'
+                : ''
+          }
+          title={
+            selectedDivision
+              ? `Readiness status in ${selectedDivision}`
+              : `Readiness status by ${comparisonLabel}`
+          }
+          description={
+            selectedDivision
+              ? 'Record totals for each readiness status in the selected division.'
+              : 'Ranked by total projects, each bar shows the mix of ready, pending, at-risk, and unclassified records.'
           }
         >
-          <BarChart
-            data={readinessChartData}
-            layout={selectedDivision ? 'horizontal' : 'vertical'}
-            margin={{ left: 12, right: 20 }}
-            accessibilityLayer
+          <ChartContainer
+            config={{
+              Ready: { label: 'Ready', color: readinessColor.Ready },
+              Pending: { label: 'Pending', color: readinessColor.Pending },
+              'At risk': { label: 'At risk', color: readinessColor['At risk'] },
+              Unknown: { label: 'Unknown', color: readinessColor.Unknown },
+            }}
+            className="h-[470px] w-full"
+            aria-label={
+              selectedDivision
+                ? `Bar chart of readiness status in ${selectedDivision}`
+                : `Stacked horizontal bar chart comparing operational readiness by ${comparisonLabel}`
+            }
           >
-            <CartesianGrid
-              horizontal={selectedDivision ? undefined : false}
-              vertical={selectedDivision ? false : undefined}
-              stroke="#e3e9f1"
-            />
-            <XAxis
-              type={selectedDivision ? 'category' : 'number'}
-              dataKey={selectedDivision ? 'name' : undefined}
-              allowDecimals={false}
-            />
-            <YAxis
-              dataKey={selectedDivision ? undefined : 'label'}
-              type={selectedDivision ? 'number' : 'category'}
-              width={selectedDivision ? undefined : 82}
-              allowDecimals={false}
-              tickLine={false}
-              axisLine={false}
-            />
-            <ChartTooltip content={<ChartTooltipContent />} />
-            {selectedDivision ? (
-              <Bar dataKey="value" fill="#1854bd" radius={[3, 3, 0, 0]} />
-            ) : (
-              statuses.map((status) => (
-                <Bar
-                  key={status}
-                  dataKey={status}
-                  stackId="readiness"
-                  fill={readinessColor[status]}
-                />
-              ))
+            <BarChart
+              data={readinessChartData}
+              layout={selectedDivision ? 'horizontal' : 'vertical'}
+              margin={{ left: 12, right: 20 }}
+              accessibilityLayer
+            >
+              <CartesianGrid
+                horizontal={selectedDivision ? undefined : false}
+                vertical={selectedDivision ? false : undefined}
+                stroke="#e3e9f1"
+              />
+              <XAxis
+                type={selectedDivision ? 'category' : 'number'}
+                dataKey={selectedDivision ? 'name' : undefined}
+                allowDecimals={false}
+              />
+              <YAxis
+                dataKey={selectedDivision ? undefined : 'label'}
+                type={selectedDivision ? 'number' : 'category'}
+                width={selectedDivision ? undefined : 82}
+                allowDecimals={false}
+                tickLine={false}
+                axisLine={false}
+              />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              {selectedDivision ? (
+                <Bar dataKey="value" fill="#1854bd" radius={[3, 3, 0, 0]} />
+              ) : (
+                statuses.map((status) => (
+                  <Bar
+                    key={status}
+                    dataKey={status}
+                    stackId="readiness"
+                    fill={readinessColor[status]}
+                  />
+                ))
+              )}
+            </BarChart>
+          </ChartContainer>
+          <div className="mt-3 flex flex-wrap gap-4 text-xs font-semibold text-[#526079]">
+            {(['Ready', 'Pending', 'At risk', 'Unknown'] as const).map(
+              (status) => (
+                <span key={status} className="inline-flex items-center gap-1.5">
+                  <span
+                    className="size-2.5 rounded-sm"
+                    style={{ background: readinessColor[status] }}
+                  />
+                  {status}
+                </span>
+              ),
             )}
-          </BarChart>
-        </ChartContainer>
-        <div className="mt-3 flex flex-wrap gap-4 text-xs font-semibold text-[#526079]">
-          {(['Ready', 'Pending', 'At risk', 'Unknown'] as const).map(
-            (status) => (
-              <span key={status} className="inline-flex items-center gap-1.5">
-                <span
-                  className="size-2.5 rounded-sm"
-                  style={{ background: readinessColor[status] }}
-                />
-                {status}
-              </span>
-            ),
-          )}
-        </div>
-      </ChartCard>
+          </div>
+        </ChartCard>
+      )}
     </section>
   );
 }
@@ -1502,13 +1827,13 @@ function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <article className="rounded-2xl border border-[#d9e2ee] bg-white p-5 shadow-[0_8px_24px_rgba(21,48,93,.05)]">
+    <article data-reveal="chart" className="rounded-2xl border border-[#d9e2ee] bg-white p-5 shadow-[0_8px_24px_rgba(21,48,93,.05)]">
       {eyebrow && (
         <p className="text-xs font-bold uppercase tracking-[.13em] text-[#2366dc]">
           {eyebrow}
         </p>
       )}
-      <h2 className={`${eyebrow ? 'mt-1' : ''} text-xl font-bold`}>{title}</h2>
+      <h2 data-reveal="chart-label" className={`${eyebrow ? 'mt-1' : ''} text-xl font-bold`}>{title}</h2>
       {description && (
         <p className="mb-3 mt-1 text-sm text-[#647089]">{description}</p>
       )}
@@ -1549,8 +1874,10 @@ function SchoolTable({
   table: ReturnType<typeof useReactTable<SchoolProject>>;
   count?: number;
 }) {
+  const rows = table.getRowModel().rows;
+  const tableRef = useReveals<HTMLElement>(rows, 'tbody tr');
   return (
-    <section className="overflow-hidden rounded-2xl border border-[#d9e2ee] bg-white shadow-[0_8px_24px_rgba(21,48,93,.05)]">
+    <section ref={tableRef} className="overflow-hidden rounded-2xl border border-[#d9e2ee] bg-white shadow-[0_8px_24px_rgba(21,48,93,.05)]">
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#e2e8f0] p-5">
         <div>
           <p className="text-xs font-bold uppercase tracking-[.13em] text-[#2366dc]">

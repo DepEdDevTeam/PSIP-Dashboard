@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
+import { animate } from 'animejs';
 import { SchoolMapTooltip } from '@/components/school-map-tooltip';
 import type { ReadinessStatus, SchoolProject } from '@/lib/psip-data';
 
@@ -13,8 +14,15 @@ const statusColors: Record<ReadinessStatus, string> = {
   Unknown: '#64748b',
 };
 const buildingColors = ['#1e5fc4', '#10a779', '#d89a12', '#7c3aed'];
+function buildingColor(name: string, index: number) {
+  const normalized = name.toLowerCase();
+  if (normalized.includes('low')) return '#f5b700';
+  if (normalized.includes('mid')) return '#10a779';
+  if (normalized.includes('high')) return '#1e5fc4';
+  return buildingColors[index % buildingColors.length];
+}
 const REGIONAL_VIEW = 'Regional View';
-const REGIONAL_CLUSTER_ZOOM = 7.5;
+const REGIONAL_CLUSTER_ZOOM = 8.5;
 const HEATMAP_VIEW = 'At-risk Heatmap';
 const regionColors: Record<string, string> = {
   'Region I': '#d7193f',
@@ -164,19 +172,18 @@ function regionPopupContent(region: string, summary?: RegionSummary) {
   const title = document.createElement('strong');
   title.textContent = region;
   title.style.cssText = 'display:block;color:#102044;font-size:14px';
-  const headline = document.createElement('p');
-  headline.textContent = summary
-    ? `${summary.readyRate}% ready · ${summary.status}`
-    : 'No matching project data';
-  headline.style.cssText =
-    'margin:6px 0 0;color:#102044;font-size:12px;font-weight:700';
   root.appendChild(title);
-  root.appendChild(headline);
   if (summary) {
     const detail = document.createElement('p');
     detail.textContent = `${summary.projects} project records · ${summary.sites} school sites`;
-    detail.style.cssText = 'margin:4px 0 0;color:#526079;font-size:12px';
+    detail.style.cssText = 'margin:6px 0 0;color:#526079;font-size:12px';
     root.appendChild(detail);
+  } else {
+    const empty = document.createElement('p');
+    empty.textContent = 'No matching project data';
+    empty.style.cssText =
+      'margin:6px 0 0;color:#102044;font-size:12px;font-weight:700';
+    root.appendChild(empty);
   }
   return root;
 }
@@ -336,11 +343,14 @@ export default function PsipMap({
           popupHost.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') closeSchoolPopup();
           });
+          let regionalPinsVisible = map.getZoom() >= REGIONAL_CLUSTER_ZOOM;
+          let regionalAnimation: ReturnType<typeof animate> | undefined;
           const bindSchoolInteraction = (
             layerId: string,
             property = 'projectIndex',
           ) => {
             const getProject = (event: { features?: unknown[] }) => {
+              if (view === REGIONAL_VIEW && !regionalPinsVisible) return undefined;
               const feature = event.features?.[0] as
                 | MapPointFeature
                 | undefined;
@@ -400,7 +410,6 @@ export default function PsipMap({
                 });
                 map.addLayer({
                   id: 'psip-regions-fill',
-                  maxzoom: REGIONAL_CLUSTER_ZOOM,
                   type: 'fill',
                   source: 'psip-regions',
                   paint: {
@@ -424,7 +433,6 @@ export default function PsipMap({
                 });
                 map.addLayer({
                   id: 'psip-regions-outline',
-                  maxzoom: REGIONAL_CLUSTER_ZOOM,
                   type: 'line',
                   source: 'psip-regions',
                   paint: {
@@ -440,11 +448,12 @@ export default function PsipMap({
                   offset: 12,
                 });
                 map.on('zoom', () => {
-                  if (map.getZoom() >= REGIONAL_CLUSTER_ZOOM) popup.remove();
+                  if (regionalPinsVisible) popup.remove();
                   else closeSchoolPopup();
                 });
                 let hoveredId: string | number | undefined;
                 map.on('mousemove', 'psip-regions-fill', (event) => {
+                  if (regionalPinsVisible) return;
                   const feature = event.features?.[0] as
                     | RegionFeature
                     | undefined;
@@ -505,7 +514,7 @@ export default function PsipMap({
                     const color =
                       view === 'Site Readiness'
                         ? statusColors[project.readiness]
-                        : buildingColors[buildingIndex % buildingColors.length];
+                        : buildingColor(project.buildingType, buildingIndex);
                     const coordinates: [number, number] = [
                       project.lng!,
                       project.lat!,
@@ -777,7 +786,6 @@ export default function PsipMap({
                     id: clusterId,
                     type: 'circle',
                     source: sourceId,
-                    minzoom: REGIONAL_CLUSTER_ZOOM,
                     filter: ['has', 'point_count'],
                     paint: {
                       'circle-color': color,
@@ -798,7 +806,6 @@ export default function PsipMap({
                     id: `${sourceId}-counts`,
                     type: 'symbol',
                     source: sourceId,
-                    minzoom: REGIONAL_CLUSTER_ZOOM,
                     filter: ['has', 'point_count'],
                     layout: {
                       'text-field': ['get', 'point_count_abbreviated'],
@@ -821,7 +828,6 @@ export default function PsipMap({
                     id: pointId,
                     type: 'circle',
                     source: sourceId,
-                    minzoom: REGIONAL_CLUSTER_ZOOM,
                     filter: ['!', ['has', 'point_count']],
                     paint: {
                       'circle-color': color,
@@ -838,6 +844,7 @@ export default function PsipMap({
                     map.getCanvas().style.cursor = '';
                   });
                   map.on('click', clusterId, (event) => {
+                    if (view === REGIONAL_VIEW && !regionalPinsVisible) return;
                     const feature = event.features?.[0] as unknown as
                       | MapPointFeature
                       | undefined;
@@ -860,6 +867,63 @@ export default function PsipMap({
                         });
                       },
                     );
+                  });
+                });
+                const progress = { pins: regionalPinsVisible ? 1 : 0 };
+                const fillOpacity = map.getPaintProperty('psip-regions-fill', 'fill-opacity');
+                const renderRegionalTransition = () => {
+                  if (disposed) return;
+                  const amount = progress.pins;
+                  const scale = 0.8 + amount * 0.2;
+                  map.setPaintProperty('psip-regions-fill', 'fill-opacity-transition', { duration: 0 });
+                  map.setPaintProperty('psip-regions-outline', 'line-opacity-transition', { duration: 0 });
+                  map.setPaintProperty('psip-regions-fill', 'fill-opacity', ['*', 1 - amount, fillOpacity]);
+                  map.setPaintProperty('psip-regions-outline', 'line-opacity', 0.72 * (1 - amount));
+                  for (const id of ['psip-regions-fill', 'psip-regions-outline']) {
+                    map.setLayoutProperty(id, 'visibility', amount === 1 ? 'none' : 'visible');
+                  }
+                  regions.forEach((_, index) => {
+                    const prefix = `regional-schools-${index}`;
+                    for (const suffix of ['clusters', 'points', 'counts']) {
+                      const id = `${prefix}-${suffix}`;
+                      map.setLayoutProperty(id, 'visibility', amount === 0 ? 'none' : 'visible');
+                      if (suffix === 'counts') {
+                        map.setPaintProperty(id, 'text-opacity-transition', { duration: 0 });
+                        map.setPaintProperty(id, 'text-opacity', amount);
+                      } else {
+                        for (const property of ['circle-opacity', 'circle-stroke-opacity', 'circle-radius'] as const) {
+                          map.setPaintProperty(id, `${property}-transition`, { duration: 0 });
+                        }
+                        map.setPaintProperty(id, 'circle-opacity', amount);
+                        map.setPaintProperty(id, 'circle-stroke-opacity', amount);
+                        map.setPaintProperty(id, 'circle-radius', suffix === 'points' ? 7 * scale :
+                          ['*', scale, ['step', ['get', 'point_count'], 16, 25, 21, 100, 27]]);
+                      }
+                    }
+                  });
+                };
+                renderRegionalTransition();
+                map.on('zoom', () => {
+                  // Separate thresholds prevent flickering when zoom rests near the boundary.
+                  const next = regionalPinsVisible
+                    ? map.getZoom() > REGIONAL_CLUSTER_ZOOM - 0.15
+                    : map.getZoom() >= REGIONAL_CLUSTER_ZOOM;
+                  if (next === regionalPinsVisible) return;
+                  regionalPinsVisible = next;
+                  closeSchoolPopup();
+                  regionalAnimation?.pause();
+                  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                    progress.pins = next ? 1 : 0;
+                    renderRegionalTransition();
+                    return;
+                  }
+                  // Animate from the current value so interrupted zooms reverse smoothly.
+                  regionalAnimation = animate(progress, {
+                    pins: next ? 1 : 0,
+                    duration: 450,
+                    ease: 'out(3)',
+                    onUpdate: renderRegionalTransition,
+                    onComplete: renderRegionalTransition,
                   });
                 });
               }
@@ -896,6 +960,7 @@ export default function PsipMap({
             }
           });
           cleanup = () => {
+            regionalAnimation?.pause();
             clearTimeout(hideTimer);
             schoolPopup.remove();
             popupRoot.unmount();

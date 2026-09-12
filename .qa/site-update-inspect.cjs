@@ -1,0 +1,3 @@
+const {chromium}=require('C:/Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+(async()=>{const b=await chromium.launch({headless:true,executablePath:'C:/Users/test/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe'});const p=await b.newPage();p.on('pageerror',e=>console.log('ERROR',e.message));await p.goto('http://localhost:3000/dashboard?search=103678&view=report',{waitUntil:'domcontentloaded',timeout:60000});await p.waitForTimeout(3000);console.log((await p.locator('body').innerText()).slice(-12000));await b.close()})().catch(e=>{console.error(e);process.exit(1)});
+

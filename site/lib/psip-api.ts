@@ -115,6 +115,14 @@ function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   });
 }
 
+export async function prefetchDashboard(): Promise<void> {
+  try {
+    await requestDashboard();
+  } catch {
+    // Preloading is opportunistic. The dashboard owns visible error and retry UI.
+  }
+}
+
 export function fetchDashboard(signal?:AbortSignal, forceRefresh = false){
   return withAbort(requestDashboard(forceRefresh).then((dashboard) => ({...dashboard,projects:dashboard.records.map(toSchoolProject)})), signal);
 }
