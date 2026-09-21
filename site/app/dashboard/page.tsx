@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useReveals, useEntrance, useDrawer } from '@/lib/animation';
 import { AnimatedNumber } from '@/components/animated-number';
 import SchoolReportDetails from '@/components/school-report-details';
-import { PhotoNavbar, type PhotoSchool } from '@/components/site-photos';
 import { MapFilterToggle } from '@/components/ui/map-filter-toggle';
 import dynamic from 'next/dynamic';
 import {
@@ -529,7 +528,7 @@ export default function DashboardPage() {
 
   return (
     <main className="flex h-screen h-dvh min-w-0 flex-col overflow-hidden bg-[#edf2f8] text-[#102044]">
-      <AppHeader photoSchools={projects.map(p => ({ schoolId: p.id, schoolName: p.name, schoolLocation: [p.municipality, p.division, p.region].filter(Boolean).join(' · ') }))} photoCurrent={filtered.length === 1 ? { schoolId: filtered[0].id, schoolName: filtered[0].name, schoolLocation: [filtered[0].municipality, filtered[0].division, filtered[0].region].filter(Boolean).join(' · ') } : undefined}
+      <AppHeader
         view={view}
         onNavigate={navigateToView}
         snapshotDate={snapshotDate}
@@ -645,12 +644,11 @@ export default function DashboardPage() {
   );
 }
 
-function AppHeader({ photoSchools, photoCurrent,
+function AppHeader({
   view,
   onNavigate,
   snapshotDate,
 }: {
-  photoSchools: PhotoSchool[]; photoCurrent?: PhotoSchool;
   view: DashboardView;
   onNavigate: (view: DashboardView) => void;
   snapshotDate: string | null;
@@ -712,7 +710,7 @@ function AppHeader({ photoSchools, photoCurrent,
               </span>
             </button>
           ))}
-        <PhotoNavbar schools={photoSchools} current={photoCurrent} /></nav>
+        </nav>
         <div className="hidden shrink-0 text-right lg:block">
           <p className="text-[10px] text-blue-200">Date as of</p>
           <p className="text-xs font-semibold">{formatted}</p>

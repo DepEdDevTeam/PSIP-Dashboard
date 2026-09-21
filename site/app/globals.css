@@ -2,8 +2,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
 @custom-variant dark (&:is(.dark *));
 @theme inline {
   --color-background: var(--background);
@@ -120,8 +118,16 @@ select {
   *::before,
   *::after {
     scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 140ms !important;
   }
+}
+
+/* Constrained devices keep the same state changes with cheaper, shorter motion. */
+html[data-motion='lite'] *,
+html[data-motion='lite'] *::before,
+html[data-motion='lite'] *::after {
+  transition-duration: 220ms;
+  transition-duration: min(220ms, var(--motion-duration, 220ms));
 }
 .mapboxgl-map {
   font-family: var(--font-geist-sans), Arial, sans-serif;
@@ -293,7 +299,8 @@ select {
   font-weight: 800;
   margin: 0;
   text-align: center;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .school-map-location {
   display: flex;
@@ -419,6 +426,36 @@ select {
   padding: 10px;
   border-radius: 8px;
   margin-top: 16px;
+}
+
+/* Keep viewport sizing usable with mobile browser chrome and older engines. */
+.landing-page,
+.landing-hero {
+  min-height: 100vh;
+  min-height: 100svh;
+}
+.landing-hero header > div > div:first-child {
+  flex-shrink: 0;
+}
+.landing-hero #home h1 {
+  font-size: clamp(2rem, 6vw, 4.5rem);
+  overflow-wrap: break-word;
+}
+.landing-hero #home p {
+  line-height: 1.4;
+}
+[data-slot='dialog-content'] {
+  max-height: 92vh;
+  max-height: 92dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px; }
+  button, a { touch-action: manipulation; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .landing-hero #home { padding-top: 2rem; padding-bottom: 2rem; }
 }
 @media (max-width: 480px) {
   .school-map-facilities {

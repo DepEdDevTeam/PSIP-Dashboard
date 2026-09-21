@@ -623,7 +623,7 @@ class FabricPsipService:
                 len(dataset),
                 fabric_ms,
             )
-            self._dataset_cache = (now + self.cache_seconds, dataset)
+            self._dataset_cache = (time.monotonic() + self.cache_seconds, dataset)
             return dataset, "miss", fabric_ms
 
     def _normalize(self, dataset: dict[str, list[dict[str, Any]]]) -> list[PsipRecord]:

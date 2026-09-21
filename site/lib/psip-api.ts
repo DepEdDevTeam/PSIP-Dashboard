@@ -1,7 +1,8 @@
 import type {PsipRecord,ReadinessStatus,SchoolProject,SchoolResponse} from '@/lib/psip-data';
 
-const DASHBOARD_CACHE_KEY = 'psip-dashboard-cache-v1';
-const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
+import { DASHBOARD_CACHE_TTL_MS, readDashboardCache, writeDashboardCache, type CacheEntry } from './dashboard-cache';
+
+let memoryCache: CacheEntry<DashboardApiResponse> | null = null;
 let dashboardPromise: Promise<DashboardApiResponse> | null = null;
 
 type FabricRecord=PsipRecord;
@@ -55,53 +56,40 @@ export function toSchoolProject(record:FabricRecord):SchoolProject{
   };
 }
 
-type CachedDashboard = { expiresAt: number; data: DashboardApiResponse };
-
-function readBrowserCache(): DashboardApiResponse | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const cached = JSON.parse(window.localStorage.getItem(DASHBOARD_CACHE_KEY) || 'null') as CachedDashboard | null;
-    if (cached && cached.expiresAt > Date.now()) return cached.data;
-    window.localStorage.removeItem(DASHBOARD_CACHE_KEY);
-  } catch {
-    // Storage can be unavailable or contain an older incompatible payload.
-  }
-  return null;
-}
-
-function writeBrowserCache(data: DashboardApiResponse) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(
-      DASHBOARD_CACHE_KEY,
-      JSON.stringify({ expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS, data }),
-    );
-  } catch {
-    // A full/blocked browser cache must not prevent live data from loading.
-  }
+function validCache(entry: CacheEntry<DashboardApiResponse> | null): entry is CacheEntry<DashboardApiResponse> {
+  const data = entry?.data;
+  return !!entry && Number.isFinite(entry.expiresAt) && entry.expiresAt > Date.now()
+    && !!data && typeof data.generatedAt === 'string' && !!data.summary && !!data.options
+    && Array.isArray(data.records) && Array.isArray(data.regions)
+    && Array.isArray(data.classroomClassifications) && Array.isArray(data.readinessCounts)
+    && data.records.every((record) => !!record && typeof record.schoolId === 'string' && !!record.facilities);
 }
 
 function requestDashboard(forceRefresh = false): Promise<DashboardApiResponse> {
-  if (!forceRefresh) {
-    const cached = readBrowserCache();
-    if (cached) return Promise.resolve(cached);
-    if (dashboardPromise) return dashboardPromise;
-  }
-  dashboardPromise = fetch('/api/dashboard',{headers:{Accept:'application/json'},cache:'no-store'})
-    .then(async (response) => {
-      if(!response.ok){
-        const payload=await response.json().catch(()=>null) as {detail?:string}|null;
-        throw new Error(payload?.detail||`Dashboard API returned HTTP ${response.status}.`);
+  // Share both the persistent-cache lookup and network request across mounts/navigation.
+  if (dashboardPromise) return dashboardPromise;
+  if (!forceRefresh && validCache(memoryCache)) return Promise.resolve(memoryCache.data);
+  dashboardPromise = (async () => {
+    if (!forceRefresh) {
+      const cached = await readDashboardCache<DashboardApiResponse>();
+      if (validCache(cached)) {
+        memoryCache = cached;
+        return cached.data;
       }
-      return await response.json() as DashboardApiResponse;
-    })
-    .then((data) => {
-      writeBrowserCache(data);
-      return data;
-    })
-    .finally(() => {
-      dashboardPromise = null;
-    });
+    }
+    const response = await fetch('/api/dashboard', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null) as { detail?: string } | null;
+      throw new Error(payload?.detail || `Dashboard API returned HTTP ${response.status}.`);
+    }
+    const data = await response.json() as DashboardApiResponse;
+    const entry = { expiresAt: Date.now() + DASHBOARD_CACHE_TTL_MS, data };
+    if (!validCache(entry)) throw new Error('The dashboard API returned invalid data. Please retry.');
+    memoryCache = entry;
+    // Rendering doesn't wait for the disk write; memory also covers unavailable storage.
+    void writeDashboardCache(entry);
+    return data;
+  })().finally(() => { dashboardPromise = null; });
   return dashboardPromise;
 }
 

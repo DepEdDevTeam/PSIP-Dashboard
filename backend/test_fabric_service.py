@@ -286,6 +286,13 @@ class DatasetCacheAndApiTests(unittest.TestCase):
         self.assertEqual(client.calls, len(ENTITY_FIELDS))
         self.assertEqual(timing.cache_status, "hit")
 
+    def test_cache_lifetime_starts_after_loading_finishes(self):
+        service = FabricPsipService(CountingClient(), cache_seconds=1800)
+        with patch("fabric_service.time.monotonic", side_effect=[100, 220, 2019]):
+            service.get_dashboard()
+            _, timing = service.get_dashboard_with_timing()
+        self.assertEqual(timing.cache_status, "hit")
+
     def test_expired_cache_refetches(self):
         client = CountingClient()
         service = FabricPsipService(client, cache_seconds=-1, fetch_workers=4)

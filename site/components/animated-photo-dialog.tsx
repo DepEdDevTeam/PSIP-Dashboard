@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
-import { gsap } from '@/lib/animation';
+import { getMotionProfile, gsap } from '@/lib/animation';
 import { cn } from '@/lib/utils';
 
 const TransitionContext = createContext({ open: false, finish: () => {} });
@@ -81,10 +81,12 @@ function PhotoDialogSurface({
     media.add(
       {
         reduce: '(prefers-reduced-motion: reduce)',
-        full: '(prefers-reduced-motion: no-preference)',
+        all: 'all',
       },
-      (context) => {
-        const reduced = !!context.conditions?.reduce;
+      () => {
+        const profile = getMotionProfile();
+        const reduced = profile === 'reduced';
+        const lite = profile === 'lite';
         const animation = gsap.timeline({
           paused: true,
           onReverseComplete: () => finishRef.current(),
@@ -93,16 +95,16 @@ function PhotoDialogSurface({
           .fromTo(
             backdrop.current,
             { opacity: 0 },
-            { opacity: 1, duration: reduced ? 0.08 : 0.18 },
+            { opacity: 1, duration: reduced ? 0.12 : lite ? 0.14 : 0.18 },
           )
           .fromTo(
             popup.current,
-            { opacity: 0, scale: reduced ? 1 : 0.975, y: reduced ? 0 : 12 },
+            { opacity: 0, scale: reduced ? 1 : lite ? 0.99 : 0.975, y: reduced ? 0 : lite ? 5 : 12 },
             {
               opacity: 1,
               scale: 1,
               y: 0,
-              duration: reduced ? 0.1 : 0.26,
+              duration: reduced ? 0.14 : lite ? 0.2 : 0.26,
               ease: 'power2.out',
             },
             0,

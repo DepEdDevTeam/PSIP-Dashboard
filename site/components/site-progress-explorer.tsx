@@ -12,7 +12,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { gsap } from '@/lib/animation';
+import { getMotionProfile, gsap } from '@/lib/animation';
 import { groupSiteUpdates, type DemoPhoto } from '@/lib/demo-site-photos';
 import { dateLabel, photoButton, type PhotoSchool } from './site-update-shared';
 
@@ -99,15 +99,16 @@ export function SiteProgressExplorer({
   useLayoutEffect(() => {
     if (!surface.current || !photo) return;
     const media = gsap.matchMedia();
-    media.add('(prefers-reduced-motion: no-preference)', () => {
+    media.add({ reduce: '(prefers-reduced-motion: reduce)', all: 'all' }, () => {
+      const profile = getMotionProfile();
       gsap.fromTo(
         surface.current,
-        { opacity: 0.35, x: direction * 16, scale: 1.015 },
+        { opacity: profile === 'reduced' ? 0.72 : 0.35, x: profile === 'reduced' ? 0 : direction * (profile === 'lite' ? 6 : 16), scale: profile === 'full' ? 1.015 : 1 },
         {
           opacity: 1,
           x: 0,
           scale: 1,
-          duration: 0.55,
+          duration: profile === 'reduced' ? 0.14 : profile === 'lite' ? 0.24 : 0.55,
           ease: 'power2.out',
           clearProps: 'transform,opacity',
         },

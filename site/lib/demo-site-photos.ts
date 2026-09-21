@@ -56,6 +56,62 @@ export function validDateTaken(value: string) {
 }
 const KEY = 'ppp.demo.site-photos.v1';
 const MAX_RECORDS = 40;
+
+// Curated records used by the school-report demo. Keep these outside session
+// storage so the progress story is available in every fresh browser session.
+const BUILT_IN_PHOTOS: DemoPhoto[] = [
+  {
+    id: 'mabini-136453-foundation-2026-06-18',
+    schoolId: '136453',
+    schoolName: 'A. Mabini Elementary School',
+    image: '/demo/136453/phase-1.jpg',
+    remarks: 'Foundation layout, reinforcement, and initial concrete works are in place.',
+    category: 'Construction progress',
+    submittedAt: '2026-06-18T08:00:00.000Z',
+    status: 'approved',
+    source: 'community',
+    batchId: 'mabini-136453-2026-06-18',
+    dateTaken: '2026-06-18',
+    stage: 'Foundation',
+    title: 'Foundation works',
+    viewpoint: 'Front',
+    order: 0,
+  },
+  {
+    id: 'mabini-136453-structural-2026-07-16',
+    schoolId: '136453',
+    schoolName: 'A. Mabini Elementary School',
+    image: '/demo/136453/phase-2.jpg',
+    remarks: 'Wall panels and structural steel framing are being installed.',
+    category: 'Construction progress',
+    submittedAt: '2026-07-16T08:00:00.000Z',
+    status: 'approved',
+    source: 'community',
+    batchId: 'mabini-136453-2026-07-16',
+    dateTaken: '2026-07-16',
+    stage: 'Structural Works',
+    title: 'Structural works',
+    viewpoint: 'Front',
+    order: 0,
+  },
+  {
+    id: 'mabini-136453-finishing-2026-08-20',
+    schoolId: '136453',
+    schoolName: 'A. Mabini Elementary School',
+    image: '/demo/136453/phase-3.jpg',
+    remarks: 'The building envelope is complete and final roofing and finishing works are underway.',
+    category: 'Construction progress',
+    submittedAt: '2026-08-20T08:00:00.000Z',
+    status: 'approved',
+    source: 'community',
+    batchId: 'mabini-136453-2026-08-20',
+    dateTaken: '2026-08-20',
+    stage: 'Finishing',
+    title: 'Finishing works',
+    viewpoint: 'Front',
+    order: 0,
+  },
+];
 let records: DemoPhoto[] = [];
 let initialized = false;
 let warning = '';
@@ -123,6 +179,7 @@ function valid(value: unknown): value is DemoPhoto {
 export function initializePhotos() {
   if (initialized) return;
   initialized = true;
+  records = [...BUILT_IN_PHOTOS];
   try {
     const raw = sessionStorage.getItem(KEY);
     if (raw) {
@@ -135,7 +192,11 @@ export function initializePhotos() {
         new Set(parsed.map((p) => p.id)).size !== parsed.length
       )
         throw new Error('Invalid data');
-      records = parsed;
+      const builtInIds = new Set(BUILT_IN_PHOTOS.map((photo) => photo.id));
+      records = [
+        ...BUILT_IN_PHOTOS,
+        ...parsed.filter((photo) => !builtInIds.has(photo.id)),
+      ];
     }
   } catch {
     warning =

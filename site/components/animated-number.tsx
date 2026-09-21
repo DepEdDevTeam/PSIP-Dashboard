@@ -1,7 +1,7 @@
 'use client';
 
 import { useLayoutEffect, useRef } from 'react';
-import { gsap } from '@/lib/animation';
+import { getMotionProfile, gsap } from '@/lib/animation';
 
 const format = new Intl.NumberFormat('en-US');
 
@@ -16,9 +16,10 @@ export function AnimatedNumber({ value }: { value: number | string }) {
     const element = ref.current;
     const counter = { value: previous.current };
     const media = gsap.matchMedia();
-    media.add({ reduce: '(prefers-reduced-motion: reduce)', full: '(prefers-reduced-motion: no-preference)' }, (context) => {
-      if (context.conditions?.reduce) { element.textContent = label; previous.current = numeric; return; }
-      gsap.to(counter, { value: numeric, duration: 0.45, ease: 'power2.out', onUpdate: () => {
+    media.add({ reduce: '(prefers-reduced-motion: reduce)', all: 'all' }, () => {
+      const profile = getMotionProfile();
+      if (profile === 'reduced') { element.textContent = label; previous.current = numeric; return; }
+      gsap.to(counter, { value: numeric, duration: profile === 'lite' ? 0.24 : 0.45, ease: 'power2.out', onUpdate: () => {
         previous.current = counter.value;
         element.textContent = `${format.format(Math.round(counter.value))}${suffix}`;
       }, onComplete: () => { element.textContent = label; } });

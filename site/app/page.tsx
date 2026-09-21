@@ -23,8 +23,8 @@ export default function Home() {
         <div className="absolute inset-0 scale-[1.2] bg-[url('/school-campus.jpg')] bg-cover bg-center" />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(255,255,255,0.82)_31%,rgba(255,255,255,0.10)_72%,rgba(10,38,91,0.10)_100%)]" />
 
-        <header className="relative z-10 flex items-center justify-between px-7 py-7 md:px-12 lg:px-14">
-          <div className="flex items-center gap-3.5">
+        <header className="relative z-10 flex flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-7 md:px-12 lg:px-14">
+          <div className="flex min-w-0 items-center gap-3.5">
             <Mark />
             <div className="leading-none">
               <p className="mb-1.5 text-[0.68rem] font-extrabold tracking-[0.14em] sm:text-sm">DEPARTMENT OF EDUCATION</p>
@@ -52,7 +52,7 @@ export default function Home() {
           <TrackProjectsLink />
         </div>
 
-        <footer className="relative z-10 flex min-h-27 items-center justify-between bg-[#0e3170] px-8 py-5 text-white md:px-12 lg:px-14">
+        <footer className="relative z-10 flex min-h-27 flex-wrap items-center justify-between gap-4 bg-[#0e3170] px-4 py-5 text-white sm:px-8 md:px-12 lg:px-14">
           <div className="flex items-center gap-3 sm:gap-5">
             <div className="relative h-16 w-36 shrink-0 overflow-hidden mix-blend-screen sm:w-44">
               <Image
@@ -60,6 +60,7 @@ export default function Home() {
                 alt="DepEd Department of Education and Bagong Pilipinas"
                 width={2560}
                 height={1517}
+                unoptimized
                 className="absolute -top-4 left-0 h-auto w-full sm:-top-5"
               />
             </div>
