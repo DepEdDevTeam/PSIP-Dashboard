@@ -44,22 +44,6 @@ bun run lint
 bun run build
 ```
 
-## Vercel deployment
-
-Deploy only the `site` directory as the Vercel project root. The frontend is
-configured with a Vercel-compatible Vinext build and proxies data requests to
-the separate FastAPI service.
-
-Set these Vercel environment variables:
-
-```text
-PSIP_API_BASE_URL=https://your-fastapi-service.example.com
-PSIP_API_TIMEOUT_MS=120000
-NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=pk....
-```
-
-Deploy `backend` separately using the included `backend/Dockerfile`. Configure
-the hosted API with `FABRIC_AUTH_MODE=default`, the Fabric GraphQL endpoint,
-Azure service-principal credentials, and `CORS_ALLOWED_ORIGINS` containing the
-Vercel domain. Interactive Microsoft sign-in and the local Windows token cache
-are for local development only.
+For hosted use, deploy FastAPI separately, use managed identity or a service
+principal (`FABRIC_AUTH_MODE=default`), and set `PSIP_API_BASE_URL` to its HTTPS
+origin in the Sites runtime configuration.
