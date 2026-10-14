@@ -22,6 +22,7 @@ from azure.identity import (
     InteractiveBrowserCredential,
     TokenCachePersistenceOptions,
 )
+from demo_source import WorkbookDatasetClient
 from pydantic import BaseModel, Field
 
 LOGGER = logging.getLogger(__name__)
@@ -414,6 +415,14 @@ class FabricPsipService:
 
     @classmethod
     def from_environment(cls) -> "FabricPsipService":
+        data_source = os.getenv("PSIP_DATA_SOURCE", "fabric").strip().lower()
+        if data_source in {"workbook", "excel", "demo"}:
+            workbook_value = os.getenv("PSIP_DEMO_WORKBOOK", "../PSIP Raw.csv")
+            workbook_path = Path(workbook_value)
+            if not workbook_path.is_absolute():
+                workbook_path = Path(__file__).resolve().parent / workbook_path
+            LOGGER.warning("Using temporary demo workbook: %s", workbook_path)
+            return cls(WorkbookDatasetClient(workbook_path), cache_seconds=60, fetch_workers=1)
         endpoint = os.getenv("GRAPH_QL_ENDPOINT") or os.getenv("FABRIC_GRAPHQL_ENDPOINT")
         if not endpoint:
             raise FabricConfigurationError(
